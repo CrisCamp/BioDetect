@@ -512,7 +512,7 @@ class _RegDatosState extends State<RegDatos> {
       'Acari', // Arachnida
       'Amblypygi', // Arachnida
       'Araneae', // Arachnida
-      'Scorpions', // Arachnida
+      'Scorpiones', // Arachnida
       'Solifugae', // Arachnida
       'Dermaptera', // Insecta
       'Lepidoptera', // Insecta
@@ -530,7 +530,7 @@ class _RegDatosState extends State<RegDatos> {
   List<DropdownMenuItem<String>> _getFilteredTaxonOrder() {
     // Definir qué órdenes pertenecen a cada clase con tipado explícito
     final Map<String, List<String>> classToOrders = {
-      'Arachnida': ['Acari', 'Amblypygi', 'Araneae', 'Scorpions', 'Solifugae'],
+      'Arachnida': ['Acari', 'Amblypygi', 'Araneae', 'Scorpiones', 'Solifugae'],
       'Insecta': ['Dermaptera', 'Lepidoptera', 'Mantodea', 'Orthoptera', 'Thysanoptera'],
     };
 

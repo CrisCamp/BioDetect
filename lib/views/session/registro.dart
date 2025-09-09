@@ -158,7 +158,7 @@ class _RegistroState extends State<Registro> {
           'Acari': 0,
           'Amblypygi': 0,
           'Araneae': 0,
-          'Scorpions': 0,
+          'Scorpiones': 0,
           'Solifugae': 0,
           // Insecta (5 órdenes)
           'Dermaptera': 0,
