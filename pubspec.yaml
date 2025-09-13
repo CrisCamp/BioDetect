@@ -47,6 +47,10 @@ dependencies:
   printing: ^5.13.2
   share_plus: ^11.1.0
 
+  # Google Drive API
+  googleapis: ^14.0.0
+  googleapis_auth: ^1.6.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

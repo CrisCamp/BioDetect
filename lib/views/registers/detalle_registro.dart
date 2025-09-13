@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 import 'datos.dart';
 
 class DetalleRegistro extends StatefulWidget {
@@ -148,14 +151,38 @@ class _DetalleRegistroState extends State<DetalleRegistro> {
 
   String _formatDate(Map<String, dynamic> registro) {
     try {
-      if (registro['verificationDate'] != null) {
-        final date = registro['verificationDate'];
+      String result = '';
+      
+      // Fecha de creación
+      if (registro['uploadedAt'] != null) {
+        final date = registro['uploadedAt'];
         final dt = date is DateTime ? date : date.toDate();
-        return 'Verificado: ${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+        result = 'Creado: ${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
       }
-    } catch (_) {}
-    
-    return 'Fecha: No disponible';
+      
+      // Fecha de modificación (solo si es diferente a la creación)
+      if (registro['lastModifiedAt'] != null && registro['uploadedAt'] != null) {
+        final modDate = registro['lastModifiedAt'];
+        final modDt = modDate is DateTime ? modDate : modDate.toDate();
+        
+        final createDate = registro['uploadedAt'];
+        final createDt = createDate is DateTime ? createDate : createDate.toDate();
+        
+        // Si la diferencia es mayor a 1 minuto, consideramos que fue editado
+        if (modDt.difference(createDt).inMinutes > 1) {
+          result += '\nModificado: ${modDt.day.toString().padLeft(2, '0')}/${modDt.month.toString().padLeft(2, '0')}/${modDt.year}';
+        }
+      } else if (registro['lastModifiedAt'] != null && registro['uploadedAt'] == null) {
+        // Fallback si no hay uploadedAt
+        final date = registro['lastModifiedAt'];
+        final dt = date is DateTime ? date : date.toDate();
+        result = 'Fecha: ${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+      }
+      
+      return result.isNotEmpty ? result : 'Fecha: No disponible';
+    } catch (_) {
+      return 'Fecha: No disponible';
+    }
   }
 
   Future<void> _actualizarActividadUsuario(String userId, String className, String taxonOrder) async {
@@ -177,11 +204,9 @@ class _DetalleRegistroState extends State<DetalleRegistro> {
       // Obtener conteos actuales
       final currentByTaxon = currentData['speciesIdentified']?['byTaxon'] as Map<String, dynamic>?;
       final currentByClass = currentData['speciesIdentified']?['byClass'] as Map<String, dynamic>?;
-      final currentByClassTaxonomy = currentData['speciesIdentified']?['byClassTaxonomy'] as Map<String, dynamic>?;
 
       final currentTaxonCount = currentByTaxon?[taxonOrder] ?? 0;
       final currentClassCount = currentByClass?[className] ?? 0;
-      final currentClassTaxonomyCount = currentByClassTaxonomy?[className] ?? 0;
 
       // Preparar datos de actualización
       Map<String, dynamic> updateData = {
@@ -276,6 +301,19 @@ class _DetalleRegistroState extends State<DetalleRegistro> {
     } finally {
       if (mounted) setState(() => _isDeleting = false);
     }
+  }
+
+  // Método para mostrar imagen en pantalla completa
+  void _showFullScreenImage(BuildContext context, String imageUrl) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullScreenImageViewer(
+          imageUrl: imageUrl,
+          registroData: _registro,
+        ),
+        fullscreenDialog: true,
+      ),
+    );
   }
 
   Widget _buildImageWidget() {
@@ -391,9 +429,12 @@ class _DetalleRegistroState extends State<DetalleRegistro> {
                       ),
                       const SizedBox(height: 18),
                       // Imagen
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: _buildImageWidget(),
+                      GestureDetector(
+                        onTap: () => _showFullScreenImage(context, _registro['imageUrl']),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: _buildImageWidget(),
+                        ),
                       ),
                       const SizedBox(height: 24),
                       // Detalles
@@ -604,6 +645,306 @@ class _DetalleRegistroState extends State<DetalleRegistro> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// Widget para mostrar imagen en pantalla completa
+class FullScreenImageViewer extends StatelessWidget {
+  final String imageUrl;
+  final Map<String, dynamic>? registroData;
+
+  const FullScreenImageViewer({
+    super.key,
+    required this.imageUrl,
+    this.registroData,
+  });
+
+  // Método para descargar la imagen con metadatos
+  Future<void> _downloadImageWithMetadata(BuildContext context) async {
+    try {
+      // Mostrar indicador de descarga
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+
+      // Solicitar permisos de almacenamiento
+      if (await _requestStoragePermission()) {
+        
+        // Descargar la imagen
+        final response = await http.get(Uri.parse(imageUrl));
+        if (response.statusCode == 200) {
+          
+          // Obtener directorio para guardar
+          Directory? saveDirectory;
+          String displayPath;
+          
+          if (Platform.isAndroid) {
+            // Intentar usar DCIM primero, si falla usar el directorio de la app
+            try {
+              saveDirectory = Directory('/storage/emulated/0/DCIM/BioDetect_Registros');
+              displayPath = 'DCIM/BioDetect_Registros';
+            } catch (e) {
+              // Si falla, usar directorio de la app
+              final appDir = await getExternalStorageDirectory();
+              saveDirectory = Directory('${appDir?.path ?? ''}/BioDetect_Registros');
+              displayPath = 'BioDetect_Registros';
+            }
+          } else {
+            // En iOS, usar el directorio de documentos de la app
+            final appDir = await getApplicationDocumentsDirectory();
+            saveDirectory = Directory('${appDir.path}/BioDetect_Registros');
+            displayPath = 'BioDetect_Registros';
+          }
+          
+          // Crear el directorio si no existe
+          if (!await saveDirectory.exists()) {
+            await saveDirectory.create(recursive: true);
+          }
+          
+          // Generar nombre descriptivo con ID de foto
+          final photoId = registroData?['photoId'] ?? DateTime.now().millisecondsSinceEpoch.toString();
+          
+          String fileName = 'registro_$photoId';
+          
+          // Agregar metadatos al nombre del archivo si están disponibles
+          if (registroData != null) {
+            final clase = registroData!['class'] ?? '';
+            final orden = registroData!['taxonOrder'] ?? '';
+            
+            if (clase.isNotEmpty && orden.isNotEmpty) {
+              // Limpiar caracteres especiales para el nombre del archivo
+              final claseClean = clase.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+              final ordenClean = orden.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+              fileName = '${claseClean}_${ordenClean}_$fileName';
+            }
+          }
+          
+          fileName += '.jpg';
+          final filePath = '${saveDirectory.path}/$fileName';
+          
+          // Guardar la imagen
+          final file = File(filePath);
+          await file.writeAsBytes(response.bodyBytes);
+          
+          // Crear archivo de metadatos si hay información disponible
+          if (registroData != null) {
+            await _createMetadataFile(saveDirectory.path, fileName, registroData!);
+          }
+          
+          displayPath = '$displayPath/$fileName';
+          
+          // Cerrar indicador de descarga
+          if (context.mounted) Navigator.of(context).pop();
+          
+          // Mostrar mensaje de éxito
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Imagen y metadatos guardados en: $displayPath'),
+                backgroundColor: AppColors.buttonGreen2,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        } else {
+          throw Exception('Error al descargar la imagen');
+        }
+      } else {
+        // Cerrar indicador de descarga
+        if (context.mounted) Navigator.of(context).pop();
+        
+        // Mostrar mensaje de error de permisos
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Se necesitan permisos de almacenamiento para descargar la imagen'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Cerrar indicador de descarga
+      if (context.mounted) Navigator.of(context).pop();
+      
+      // Mostrar mensaje de error
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al descargar la imagen: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  // Crear archivo de metadatos
+  Future<void> _createMetadataFile(String directoryPath, String imageFileName, Map<String, dynamic> registro) async {
+    try {
+      final metadataFileName = imageFileName.replaceAll('.jpg', '_metadata.txt');
+      final metadataFile = File('$directoryPath/$metadataFileName');
+      
+      // Formatear coordenadas
+      String coordenadas = 'No disponibles';
+      if (registro['coords'] != null) {
+        final lat = registro['coords']['x'];
+        final lon = registro['coords']['y'];
+        if (lat != null && lon != null && (lat != 0 || lon != 0)) {
+          coordenadas = '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
+        }
+      }
+      
+      // Formatear fecha de creación
+      String fechaCreacion = 'No disponible';
+      try {
+        if (registro['uploadedAt'] != null) {
+          final date = registro['uploadedAt'];
+          final dt = date is DateTime ? date : date.toDate();
+          fechaCreacion = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+        }
+      } catch (_) {}
+      
+      // Formatear fecha de modificación
+      String fechaModificacion = '';
+      try {
+        if (registro['lastModifiedAt'] != null) {
+          final date = registro['lastModifiedAt'];
+          final dt = date is DateTime ? date : date.toDate();
+          fechaModificacion = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+        }
+      } catch (_) {}
+      
+      // Formatear fecha de sincronización
+      String fechaSincronizacion = 'No sincronizado';
+      try {
+        if (registro['syncedAt'] != null) {
+          final date = registro['syncedAt'];
+          final dt = date is DateTime ? date : date.toDate();
+          fechaSincronizacion = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+        }
+      } catch (_) {}
+      
+      final metadata = '''
+=== METADATOS DEL REGISTRO BIODETECT ===
+Archivo de imagen: $imageFileName
+Fecha de descarga: ${DateTime.now().toString()}
+
+=== INFORMACIÓN TAXONÓMICA ===
+Clase: ${registro['class'] ?? 'No especificada'}
+Orden: ${registro['taxonOrder'] ?? 'No especificado'}
+
+=== INFORMACIÓN DEL HALLAZGO ===
+Hábitat: ${registro['habitat'] ?? 'No especificado'}
+Detalles: ${registro['details'] ?? 'Sin detalles'}
+Notas: ${registro['notes'] ?? 'Sin notas'}
+
+=== INFORMACIÓN GEOGRÁFICA ===
+Coordenadas: $coordenadas
+
+=== FECHAS ===
+Fecha de creación: $fechaCreacion${fechaModificacion.isNotEmpty ? '\nÚltima modificación: $fechaModificacion' : ''}
+
+=== SINCRONIZACIÓN ===
+Estado: ${registro['syncedAt'] != null ? 'Sincronizado con Google Drive' : 'Sin sincronizar'}
+Fecha de sincronización: $fechaSincronizacion
+''';
+      
+      await metadataFile.writeAsString(metadata);
+    } catch (e) {
+      print('Error creando archivo de metadatos: $e');
+    }
+  }
+
+  // Solicitar permisos de almacenamiento
+  Future<bool> _requestStoragePermission() async {
+    if (Platform.isAndroid) {
+      // Verificar permisos según la versión de Android
+      PermissionStatus status;
+      
+      // Para Android 11+ (API 30+)
+      if (await Permission.manageExternalStorage.isRestricted == false) {
+        status = await Permission.manageExternalStorage.status;
+        if (!status.isGranted) {
+          status = await Permission.manageExternalStorage.request();
+        }
+      } else {
+        // Para Android 10 y versiones anteriores
+        status = await Permission.storage.status;
+        if (!status.isGranted) {
+          status = await Permission.storage.request();
+        }
+      }
+      
+      return status.isGranted;
+    } else {
+      // En iOS, generalmente no necesitamos permisos adicionales para el directorio de la app
+      return true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download, color: Colors.white),
+            onPressed: () => _downloadImageWithMetadata(context),
+            tooltip: 'Descargar imagen con metadatos',
+          ),
+        ],
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          panEnabled: true,
+          scaleEnabled: true,
+          minScale: 0.5,
+          maxScale: 4.0,
+          child: CachedNetworkImage(
+            imageUrl: imageUrl,
+            fit: BoxFit.contain,
+            width: double.infinity,
+            height: double.infinity,
+            placeholder: (context, url) => const Center(
+              child: CircularProgressIndicator(
+                color: Colors.white,
+              ),
+            ),
+            errorWidget: (context, url, error) => const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    color: Colors.white,
+                    size: 64,
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Error al cargar la imagen',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

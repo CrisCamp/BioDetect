@@ -10,6 +10,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 
 // Modal para mostrar el perfil del usuario
 class UserProfileModal extends StatelessWidget {
@@ -1411,6 +1414,16 @@ class ForoMensajeCard extends StatelessWidget {
     this.isPending = false, // Por defecto no está pendiente
   });
 
+  // Método para mostrar imagen en pantalla completa
+  static void _showFullScreenImage(BuildContext context, String imageUrl) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullScreenImageViewer(imageUrl: imageUrl),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Align(
@@ -1564,49 +1577,261 @@ class ForoMensajeCard extends StatelessWidget {
               if (imagen != null && imagen!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network( // Cambiado de Image.asset a Image.network
-                      imagen!,
-                      height: 160,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      // Mostrar un indicador de carga mientras la imagen se descarga
-                      loadingBuilder: (BuildContext context, Widget child, ImageChunkEvent? loadingProgress) {
-                        if (loadingProgress == null) return child; // Imagen cargada
-                        return Container(
-                          height: 160,
-                          width: double.infinity,
-                          color: Colors.grey[300], // Un color de fondo mientras carga
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                                  : null,
-                              color: AppColors.textWhite, // O el color que prefieras
+                  child: GestureDetector(
+                    onTap: () => _showFullScreenImage(context, imagen!),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        imagen!,
+                        height: 160,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        // Mostrar un indicador de carga mientras la imagen se descarga
+                        loadingBuilder: (BuildContext context, Widget child, ImageChunkEvent? loadingProgress) {
+                          if (loadingProgress == null) return child; // Imagen cargada
+                          return Container(
+                            height: 160,
+                            width: double.infinity,
+                            color: Colors.grey[300], // Un color de fondo mientras carga
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                value: loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                    : null,
+                                color: AppColors.textWhite,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                      // Mostrar un widget de error si la imagen no se puede cargar
-                      errorBuilder: (BuildContext context, Object exception, StackTrace? stackTrace) {
-                        return Container(
-                          height: 160,
-                          width: double.infinity,
-                          color: Colors.grey[300],
-                          child: const Center(
-                            child: Icon(
-                              Icons.error_outline,
-                              color: Colors.red,
-                              size: 40,
+                          );
+                        },
+                        // Mostrar un widget de error si la imagen no se puede cargar
+                        errorBuilder: (BuildContext context, Object exception, StackTrace? stackTrace) {
+                          return Container(
+                            height: 160,
+                            width: double.infinity,
+                            color: Colors.grey[300],
+                            child: const Center(
+                              child: Icon(
+                                Icons.error_outline,
+                                color: Colors.red,
+                                size: 40,
+                              ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Widget para mostrar imagen en pantalla completa
+class FullScreenImageViewer extends StatelessWidget {
+  final String imageUrl;
+
+  const FullScreenImageViewer({
+    super.key,
+    required this.imageUrl,
+  });
+
+  // Método para descargar la imagen
+  Future<void> _downloadImage(BuildContext context) async {
+    try {
+      // Mostrar indicador de descarga
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+
+      // Solicitar permisos de almacenamiento
+      if (await _requestStoragePermission()) {
+        
+        // Descargar la imagen
+        final response = await http.get(Uri.parse(imageUrl));
+        if (response.statusCode == 200) {
+          
+          // Obtener directorio para guardar
+          Directory? saveDirectory;
+          String displayPath;
+          
+          if (Platform.isAndroid) {
+            // Intentar usar DCIM primero, si falla usar el directorio de la app
+            try {
+              saveDirectory = Directory('/storage/emulated/0/DCIM/BioDetect_Chat');
+              displayPath = 'DCIM/BioDetect_Chat';
+            } catch (e) {
+              // Si falla, usar directorio de la app
+              final appDir = await getExternalStorageDirectory();
+              saveDirectory = Directory('${appDir?.path ?? ''}/BioDetect_Chat');
+              displayPath = 'BioDetect_Chat';
+            }
+          } else {
+            // En iOS, usar el directorio de documentos de la app
+            final appDir = await getApplicationDocumentsDirectory();
+            saveDirectory = Directory('${appDir.path}/BioDetect_Chat');
+            displayPath = 'BioDetect_Chat';
+          }
+          
+          // Crear el directorio si no existe
+          if (!await saveDirectory.exists()) {
+            await saveDirectory.create(recursive: true);
+          }
+          
+          // Generar nombre único para el archivo
+          final timestamp = DateTime.now().millisecondsSinceEpoch;
+          final dateTime = DateTime.now();
+          final fileName = 'chat_${dateTime.year}${dateTime.month.toString().padLeft(2, '0')}${dateTime.day.toString().padLeft(2, '0')}_$timestamp.jpg';
+          final filePath = '${saveDirectory.path}/$fileName';
+          
+          // Guardar la imagen
+          final file = File(filePath);
+          await file.writeAsBytes(response.bodyBytes);
+          
+          displayPath = '$displayPath/$fileName';
+          
+          // Cerrar indicador de descarga
+          if (context.mounted) Navigator.of(context).pop();
+          
+          // Mostrar mensaje de éxito
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Imagen guardada en: $displayPath'),
+                backgroundColor: AppColors.buttonGreen2,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        } else {
+          throw Exception('Error al descargar la imagen');
+        }
+      } else {
+        // Cerrar indicador de descarga
+        if (context.mounted) Navigator.of(context).pop();
+        
+        // Mostrar mensaje de error de permisos
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Se necesitan permisos de almacenamiento para descargar la imagen'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Cerrar indicador de descarga
+      if (context.mounted) Navigator.of(context).pop();
+      
+      // Mostrar mensaje de error
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al descargar la imagen: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  // Solicitar permisos de almacenamiento
+  Future<bool> _requestStoragePermission() async {
+    if (Platform.isAndroid) {
+      // Verificar permisos según la versión de Android
+      PermissionStatus status;
+      
+      // Para Android 11+ (API 30+)
+      if (await Permission.manageExternalStorage.isRestricted == false) {
+        status = await Permission.manageExternalStorage.status;
+        if (!status.isGranted) {
+          status = await Permission.manageExternalStorage.request();
+        }
+      } else {
+        // Para Android 10 y versiones anteriores
+        status = await Permission.storage.status;
+        if (!status.isGranted) {
+          status = await Permission.storage.request();
+        }
+      }
+      
+      return status.isGranted;
+    } else {
+      // En iOS, generalmente no necesitamos permisos adicionales para el directorio de la app
+      return true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download, color: Colors.white),
+            onPressed: () => _downloadImage(context),
+            tooltip: 'Descargar imagen',
+          ),
+        ],
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          panEnabled: true,
+          scaleEnabled: true,
+          minScale: 0.5,
+          maxScale: 4.0,
+          child: Image.network(
+            imageUrl,
+            fit: BoxFit.contain,
+            width: double.infinity,
+            height: double.infinity,
+            loadingBuilder: (BuildContext context, Widget child, ImageChunkEvent? loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Center(
+                child: CircularProgressIndicator(
+                  value: loadingProgress.expectedTotalBytes != null
+                      ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                      : null,
+                  color: Colors.white,
+                ),
+              );
+            },
+            errorBuilder: (BuildContext context, Object exception, StackTrace? stackTrace) {
+              return const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: Colors.white,
+                      size: 64,
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'Error al cargar la imagen',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),

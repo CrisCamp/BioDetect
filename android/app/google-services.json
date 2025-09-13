@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "957544639048-5uk0vmpqnc93tstlccru7rc9q8ja0o99.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.biodetect",
+            "certificate_hash": "006f92adf4ba7b1d8eef9c27d6fb7208919bf182"
+          }
+        },
+        {
           "client_id": "957544639048-a3tc4e0gk5caqp15qnho6qbnbeeqlrbs.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
