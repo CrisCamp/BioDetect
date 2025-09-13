@@ -177,7 +177,7 @@ class PdfService {
                         ),
                       ),
                       pw.Text(
-                        _formatDate(registro['verificationDate']),
+                        _formatDate(registro['lastModifiedAt']),
                         style: pw.TextStyle(
                           font: fontData,
                           fontSize: 12,

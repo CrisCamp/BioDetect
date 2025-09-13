@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:biodetect/views/badges/galeria_insignias.dart';
+import 'package:biodetect/services/google_drive_service.dart';
 
 class RegDatos extends StatefulWidget {
   final File? imageFile;
@@ -32,6 +33,10 @@ class RegDatos extends StatefulWidget {
 }
 
 class _RegDatosState extends State<RegDatos> {
+  // Variables auxiliares para sincronización inmediata
+  String? _originalClass;
+  String? _originalOrder;
+  String? _originalPhotoId;
   final _formKey = GlobalKey<FormState>();
   final _latitudController = TextEditingController();
   final _longitudController = TextEditingController();
@@ -59,6 +64,11 @@ class _RegDatosState extends State<RegDatos> {
     super.initState();
     
     _isEditing = widget.photoId != null;
+
+    // Guardar valores originales para sincronización inmediata
+    if (_isEditing) {
+      _originalPhotoId = widget.photoId;
+    }
 
     if (widget.coordenadas != null) {
       _coords = widget.coordenadas!;
@@ -110,6 +120,9 @@ class _RegDatosState extends State<RegDatos> {
     setState(() {
       taxonOrder = data['taxonOrder'] ?? '';
       className = data['class'] ?? '';
+      // Guardar valores originales si no se han guardado
+      _originalOrder ??= taxonOrder;
+      _originalClass ??= className;
       habitat = data['habitat'] ?? '';
       details = data['details'] ?? '';
       notes = data['notes'] ?? '';
@@ -133,6 +146,9 @@ class _RegDatosState extends State<RegDatos> {
         setState(() {
           taxonOrder = data['taxonOrder'] ?? '';
           className = data['class'] ?? '';
+          // Guardar valores originales si no se han guardado
+          _originalOrder ??= taxonOrder;
+          _originalClass ??= className;
           habitat = data['habitat'] ?? '';
           details = data['details'] ?? '';
           notes = data['notes'] ?? '';
@@ -213,7 +229,7 @@ class _RegDatosState extends State<RegDatos> {
           // print('🆕 New taxonomy for class $className: $taxonOrder');
         } else if (!isIncrement && !isNewOrderForClass) {
           // Al decrementar, verificar si queda en 0 para decrementar el total de taxonomías de la clase
-          final currentOrderCount = currentByTaxon?[taxonOrder] ?? 0;
+          final currentOrderCount = currentByTaxon[taxonOrder] ?? 0;
           if (currentOrderCount <= 1) {
             updateData['speciesIdentified.byClassTaxonomy.$className'] = FieldValue.increment(-1);
           }
@@ -274,7 +290,7 @@ class _RegDatosState extends State<RegDatos> {
 
   Future<void> _guardarDatos() async {
     if (_isProcessing) return;
-    
+
     if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -284,7 +300,7 @@ class _RegDatosState extends State<RegDatos> {
       );
       return;
     }
-    
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -301,15 +317,116 @@ class _RegDatosState extends State<RegDatos> {
     setState(() => _isProcessing = true);
 
     try {
-      // Actualizar coordenadas desde los campos de texto
-      // _updateCoordinatesFromFields(); // No actualizar ubicación al guardar
-      
       if (_isEditing) {
-        // Modo edición: actualizar registro existente
-        final docRef = FirebaseFirestore.instance
-            .collection('insect_photos')
-            .doc(widget.photoId);
-        
+        // Obtener datos actuales para comparar clase/orden y estado de sincronización
+        final docRef = FirebaseFirestore.instance.collection('insect_photos').doc(widget.photoId);
+        final docSnap = await docRef.get();
+        final prevData = docSnap.data();
+        final prevClass = prevData?['class'] ?? '';
+        final prevOrder = prevData?['taxonOrder'] ?? '';
+        final prevSyncedAt = prevData?['syncedAt'];
+
+        final classChanged = prevClass != className;
+        final orderChanged = prevOrder != taxonOrder;
+        final wasSynced = prevSyncedAt != null;
+
+        // Si cambió clase/orden y estaba sincronizado, preguntar al usuario
+        if (wasSynced && (classChanged || orderChanged)) {
+          final shouldSync = await showDialog<bool>(
+            // ignore: use_build_context_synchronously
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: AppColors.backgroundCard,
+              title: const Text('¿Sincronizar cambios en Google Drive?', style: TextStyle(color: AppColors.textWhite)),
+              content: const Text(
+                'Has cambiado la clase y/o el orden taxonómico de un registro ya sincronizado.\n\n¿Deseas sincronizar el registro editado en Google Drive? (Esto eliminará los archivos anteriores y subirá los nuevos en la carpeta correspondiente).',
+                style: TextStyle(color: AppColors.textWhite),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('No', style: TextStyle(color: AppColors.warning)),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.buttonGreen2),
+                  child: const Text('Sí, sincronizar'),
+                ),
+              ],
+            ),
+          );
+
+          if (shouldSync == true) {
+            // 1. Eliminar archivos viejos de Drive y subir los nuevos usando los valores originales
+            try {
+              // Actualizar Firestore primero (para que los datos estén correctos en metadatos)
+              await docRef.update({
+                'taxonOrder': taxonOrder,
+                'class': className,
+                'habitat': habitat,
+                'details': details,
+                'notes': notes,
+                'coords': {'x': lat, 'y': lon},
+                'lastModifiedAt': FieldValue.serverTimestamp(),
+              });
+              // Obtener datos actualizados para metadatos
+              final updatedSnap = await docRef.get();
+              final updatedData = updatedSnap.data()!;
+              // Llamar al servicio de Drive usando los valores originales
+              await GoogleDriveService.resyncPhotoWithNewClassOrder(
+                photoId: _originalPhotoId!,
+                prevClass: _originalClass!,
+                prevOrder: _originalOrder!,
+                newClass: className,
+                newOrder: taxonOrder,
+                photoData: updatedData,
+              );
+              // Mostramos por consola los valores de las clases, ordenes e ID tanto viejos como nuevos
+              print('🔄 Resyncing photo ${_originalPhotoId!} from Class $_originalClass, Order $_originalOrder to Class $className, Order $taxonOrder');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Datos y archivos sincronizados correctamente en Drive.'),
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+                Navigator.of(context).pop(true);
+              }
+              return;
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error al sincronizar con Drive: $e')),
+                );
+              }
+              return;
+            }
+          } else {
+            // Usuario NO quiere sincronizar, solo actualizar y poner syncedAt en null
+            await docRef.update({
+              'taxonOrder': taxonOrder,
+              'class': className,
+              'habitat': habitat,
+              'details': details,
+              'notes': notes,
+              'coords': {'x': lat, 'y': lon},
+              'lastModifiedAt': FieldValue.serverTimestamp(),
+              'syncedAt': null, // Marcar como pendiente de sincronización
+            });
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Datos actualizados. El registro se marcará como pendiente de sincronización.'),
+                  duration: Duration(seconds: 3),
+                ),
+              );
+              Navigator.of(context).pop(true);
+            }
+            return;
+          }
+        }
+
+        // Edición normal (sin cambio de clase/orden o no estaba sincronizado)
         await docRef.update({
           'taxonOrder': taxonOrder,
           'class': className,
@@ -317,8 +434,8 @@ class _RegDatosState extends State<RegDatos> {
           'details': details,
           'notes': notes,
           'coords': {'x': lat, 'y': lon},
+          'lastModifiedAt': FieldValue.serverTimestamp(),
         });
-        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -326,14 +443,7 @@ class _RegDatosState extends State<RegDatos> {
               duration: Duration(seconds: 2),
             ),
           );
-          
-          // En modo edición, no verificamos insignias porque no se actualiza la actividad del usuario
-          // Las insignias solo se verifican al crear nuevos registros
-          // NOTA: Sujeto a cambios, aquí se podría considerar verificar insignias en el futuro
-
-          if (mounted) {
-            Navigator.of(context).pop(true);
-          }
+          Navigator.of(context).pop(true);
         }
       } else {
         // Modo nuevo: crear nuevo registro
@@ -365,7 +475,8 @@ class _RegDatosState extends State<RegDatos> {
       'userId': userId,
       'imageUrl': imageUrl,
       'uploadedAt': FieldValue.serverTimestamp(),
-      'verificationDate': FieldValue.serverTimestamp(),
+      'lastModifiedAt': FieldValue.serverTimestamp(),
+      'syncedAt': null, // Sin sincronizar inicialmente
       'taxonOrder': taxonOrder,
       'class': className,
       'habitat': habitat,

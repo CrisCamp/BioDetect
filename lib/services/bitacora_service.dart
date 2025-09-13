@@ -73,7 +73,7 @@ class BitacoraService {
       final query = await _firestore
           .collection('insect_photos')
           .where('userId', isEqualTo: userId)
-          .orderBy('verificationDate', descending: true)
+          .orderBy('lastModifiedAt', descending: true)
           .get(const GetOptions(source: Source.serverAndCache));
 
       final Map<String, List<Map<String, dynamic>>> photoGroups = {};
