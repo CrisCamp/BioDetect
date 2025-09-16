@@ -49,15 +49,16 @@ class UserProfileModal extends StatelessWidget {
               CircleAvatar(
                 backgroundColor: AppColors.seaGreen,
                 radius: 50,
-                backgroundImage: profilePictureUrl != null && profilePictureUrl!.isNotEmpty
-                    ? NetworkImage(profilePictureUrl!)
-                    : null,
+                backgroundImage:
+                    profilePictureUrl != null && profilePictureUrl!.isNotEmpty
+                        ? NetworkImage(profilePictureUrl!)
+                        : null,
                 child: profilePictureUrl == null || profilePictureUrl!.isEmpty
                     ? const Icon(Icons.person, color: Colors.white, size: 60)
                     : null,
               ),
               const SizedBox(height: 16),
-              
+
               // Nombre del usuario
               Text(
                 esPropio ? '$userName (Tú)' : userName,
@@ -69,32 +70,40 @@ class UserProfileModal extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
-              
+
               // Sección de insignias
               FutureBuilder<QuerySnapshot>(
                 future: FirebaseFirestore.instance.collection('badges').get(),
                 builder: (context, badgesSnapshot) {
                   if (!badgesSnapshot.hasData) {
-                    return const CircularProgressIndicator(color: AppColors.seaGreen);
+                    return const CircularProgressIndicator(
+                        color: AppColors.seaGreen);
                   }
-                  
+
                   return FutureBuilder<DocumentSnapshot>(
-                    future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
+                    future: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(userId)
+                        .get(),
                     builder: (context, userSnapshot) {
                       if (!userSnapshot.hasData) {
-                        return const CircularProgressIndicator(color: AppColors.seaGreen);
+                        return const CircularProgressIndicator(
+                            color: AppColors.seaGreen);
                       }
-                      
-                      final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
-                      final userBadges = userData?['badges'] as List<dynamic>? ?? [];
+
+                      final userData =
+                          userSnapshot.data!.data() as Map<String, dynamic>?;
+                      final userBadges =
+                          userData?['badges'] as List<dynamic>? ?? [];
                       final allBadges = badgesSnapshot.data!.docs;
-                      
+
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.star, color: Colors.amber, size: 20),
+                              const Icon(Icons.star,
+                                  color: Colors.amber, size: 20),
                               const SizedBox(width: 8),
                               Text(
                                 'Insignias (${userBadges.length}/${allBadges.length})',
@@ -107,7 +116,7 @@ class UserProfileModal extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          
+
                           // Grid de insignias con centrado automático
                           SizedBox(
                             height: 280,
@@ -115,79 +124,122 @@ class UserProfileModal extends StatelessWidget {
                               child: Builder(
                                 builder: (context) {
                                   // Ordenamos las insignias por el campo "order"
-                                  final sortedBadges = List<QueryDocumentSnapshot>.from(allBadges);
+                                  final sortedBadges =
+                                      List<QueryDocumentSnapshot>.from(
+                                          allBadges);
                                   sortedBadges.sort((a, b) {
-                                    final dataA = a.data() as Map<String, dynamic>;
-                                    final dataB = b.data() as Map<String, dynamic>;
-                                    final orderA = dataA['order'] as int? ?? 999;
-                                    final orderB = dataB['order'] as int? ?? 999;
+                                    final dataA =
+                                        a.data() as Map<String, dynamic>;
+                                    final dataB =
+                                        b.data() as Map<String, dynamic>;
+                                    final orderA =
+                                        dataA['order'] as int? ?? 999;
+                                    final orderB =
+                                        dataB['order'] as int? ?? 999;
                                     return orderA.compareTo(orderB);
                                   });
-                                  
+
                                   return Wrap(
                                     alignment: WrapAlignment.center,
                                     spacing: 12,
                                     runSpacing: 12,
                                     children: sortedBadges.map((badge) {
-                                      final badgeData = badge.data() as Map<String, dynamic>;
-                                      final badgeOrder = badgeData['order'] as int?;
-                                      
+                                      final badgeData =
+                                          badge.data() as Map<String, dynamic>;
+                                      final badgeOrder =
+                                          badgeData['order'] as int?;
+
                                       // Convertir userBadges a List<int> para comparación con el campo "order"
-                                      final userBadgeOrders = userBadges.map((e) {
+                                      final userBadgeOrders =
+                                          userBadges.map((e) {
                                         if (e is int) return e;
-                                        if (e is String) return int.tryParse(e) ?? -1;
+                                        if (e is String)
+                                          return int.tryParse(e) ?? -1;
                                         return -1;
                                       }).toList();
-                                      
-                                      final hasBadge = badgeOrder != null && userBadgeOrders.contains(badgeOrder);
-                                      final badgeIconName = badgeData['iconName'] as String?; // Nombre del archivo de la imagen
-                                      
+
+                                      final hasBadge = badgeOrder != null &&
+                                          userBadgeOrders.contains(badgeOrder);
+                                      final badgeIconName = badgeData[
+                                              'iconName']
+                                          as String?; // Nombre del archivo de la imagen
+
                                       return SizedBox(
-                                        width: 70, // Ancho fijo para mantener 3 por fila aproximadamente
+                                        width:
+                                            70, // Ancho fijo para mantener 3 por fila aproximadamente
                                         height: 100,
                                         child: Opacity(
-                                          opacity: hasBadge ? 1.0 : 0.4, // Insignias no conseguidas más opacas
+                                          opacity: hasBadge
+                                              ? 1.0
+                                              : 0.4, // Insignias no conseguidas más opacas
                                           child: Container(
                                             decoration: BoxDecoration(
-                                              color: hasBadge ? AppColors.seaGreen.withOpacity(0.3) : Colors.grey.withOpacity(0.2),
-                                              borderRadius: BorderRadius.circular(12),
+                                              color: hasBadge
+                                                  ? AppColors.seaGreen
+                                                      .withOpacity(0.3)
+                                                  : Colors.grey
+                                                      .withOpacity(0.2),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
                                               border: Border.all(
-                                                color: hasBadge ? AppColors.seaGreen : Colors.grey,
+                                                color: hasBadge
+                                                    ? AppColors.seaGreen
+                                                    : Colors.grey,
                                                 width: 2,
                                               ),
-                                              boxShadow: hasBadge ? [
-                                                BoxShadow(
-                                                  color: AppColors.seaGreen.withOpacity(0.3),
-                                                  blurRadius: 8,
-                                                  spreadRadius: 1,
-                                                ),
-                                              ] : null,
+                                              boxShadow: hasBadge
+                                                  ? [
+                                                      BoxShadow(
+                                                        color: AppColors
+                                                            .seaGreen
+                                                            .withOpacity(0.3),
+                                                        blurRadius: 8,
+                                                        spreadRadius: 1,
+                                                      ),
+                                                    ]
+                                                  : null,
                                             ),
                                             child: Padding(
                                               padding: const EdgeInsets.all(8),
                                               child: Column(
-                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
                                                 children: [
                                                   // Imagen de la insignia o ícono por defecto
                                                   Container(
                                                     width: 38,
                                                     height: 38,
                                                     decoration: BoxDecoration(
-                                                      borderRadius: BorderRadius.circular(8),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              8),
                                                     ),
-                                                    child: badgeIconName != null && badgeIconName.isNotEmpty
+                                                    child: badgeIconName !=
+                                                                null &&
+                                                            badgeIconName
+                                                                .isNotEmpty
                                                         ? ClipRRect(
-                                                            borderRadius: BorderRadius.circular(8),
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        8),
                                                             child: Image.asset(
                                                               'assets/badge_icons/$badgeIconName.png',
                                                               width: 32,
                                                               height: 32,
                                                               fit: BoxFit.cover,
-                                                              errorBuilder: (context, error, stackTrace) {
+                                                              errorBuilder:
+                                                                  (context,
+                                                                      error,
+                                                                      stackTrace) {
                                                                 // Si la imagen no se puede cargar, mostramos ícono por defecto
                                                                 return Icon(
                                                                   Icons.star,
-                                                                  color: hasBadge ? Colors.amber : Colors.grey,
+                                                                  color: hasBadge
+                                                                      ? Colors
+                                                                          .amber
+                                                                      : Colors
+                                                                          .grey,
                                                                   size: 28,
                                                                 );
                                                               },
@@ -195,21 +247,28 @@ class UserProfileModal extends StatelessWidget {
                                                           )
                                                         : Icon(
                                                             Icons.star,
-                                                            color: hasBadge ? Colors.amber : Colors.grey,
+                                                            color: hasBadge
+                                                                ? Colors.amber
+                                                                : Colors.grey,
                                                             size: 28,
                                                           ),
                                                   ),
                                                   const SizedBox(height: 6),
                                                   Text(
-                                                    badgeData['name'] ?? 'Insignia',
+                                                    badgeData['name'] ??
+                                                        'Insignia',
                                                     style: TextStyle(
-                                                      color: hasBadge ? AppColors.white : Colors.grey,
+                                                      color: hasBadge
+                                                          ? AppColors.white
+                                                          : Colors.grey,
                                                       fontSize: 9,
-                                                      fontWeight: FontWeight.w600,
+                                                      fontWeight:
+                                                          FontWeight.w600,
                                                     ),
                                                     textAlign: TextAlign.center,
                                                     maxLines: 2,
-                                                    overflow: TextOverflow.ellipsis,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                   ),
                                                 ],
                                               ),
@@ -217,7 +276,7 @@ class UserProfileModal extends StatelessWidget {
                                           ),
                                         ),
                                       );
-                                }).toList(),
+                                    }).toList(),
                                   );
                                 },
                               ),
@@ -229,16 +288,17 @@ class UserProfileModal extends StatelessWidget {
                   );
                 },
               ),
-              
+
               const SizedBox(height: 20),
-              
+
               // Botón cerrar
               ElevatedButton(
                 onPressed: () => Navigator.of(context).pop(),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.seaGreen,
                   foregroundColor: AppColors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -290,7 +350,8 @@ class Message {
       content: data['content'] ?? '',
       includeImage: data['includeImage'] ?? false,
       imageUrl: data['imageUrl'],
-      profilePictureUrl: null, // Se cargará después con el método loadProfilePicture
+      profilePictureUrl:
+          null, // Se cargará después con el método loadProfilePicture
       createdAt: data['createdAt'] ?? Timestamp.now(),
       esPropio: data['userId'] == currentUserId,
     );
@@ -303,7 +364,7 @@ class Message {
           .collection('users')
           .doc(userId)
           .get();
-      
+
       if (userDoc.exists) {
         final userData = userDoc.data() as Map<String, dynamic>;
         return userData['profilePicture'] as String?;
@@ -321,16 +382,16 @@ class Message {
           .collection('users')
           .doc(message.userId)
           .get();
-      
+
       if (userDoc.exists) {
         final userData = userDoc.data() as Map<String, dynamic>;
         final badges = userData['badges'] as List<dynamic>? ?? [];
         final badgeCount = badges.length;
         const totalBadges = 13; // Total de insignias disponibles
-        
+
         final profilePictureUrl = userData['profilePicture'] as String?;
         final badgeProgress = '$badgeCount/$totalBadges';
-        
+
         return message.copyWithProfileData(profilePictureUrl, badgeProgress);
       }
     } catch (e) {
@@ -425,7 +486,8 @@ class _ForumScreenState extends State<ForumScreen> {
   // --- Variables para gestión de conectividad ---
   bool _hasInternet = true;
   List<Message> _pendingMessages = []; // Mensajes pendientes de envío
-  bool _isSendingPendingMessages = false; // Estado de envío de mensajes pendientes
+  bool _isSendingPendingMessages =
+      false; // Estado de envío de mensajes pendientes
   Timer? _connectionCheckTimer;
 
   @override
@@ -437,16 +499,16 @@ class _ForumScreenState extends State<ForumScreen> {
   Future<void> _initializeApp() async {
     // Cargar mensajes pendientes del caché primero
     await _loadPendingMessages();
-    
+
     // Obtener usuario actual
     _getCurrentUser();
-    
+
     // Verificar conexión a internet
     await _checkInternetConnection();
-    
+
     // Iniciar el chequeo periódico de conexión
     _startPeriodicConnectionCheck();
-    
+
     // Esperar un momento para que todo se inicialice y luego verificar mensajes pendientes
     Timer(const Duration(seconds: 3), () {
       _checkAndSendPendingMessagesOnStartup();
@@ -464,7 +526,8 @@ class _ForumScreenState extends State<ForumScreen> {
       _addPendingMessagesToUI(); // Agregar mensajes pendientes a la UI
     } else {
       if (kDebugMode) {
-        print("Usuario no autenticado. El foro podría no funcionar completamente.");
+        print(
+            "Usuario no autenticado. El foro podría no funcionar completamente.");
       }
       // Aqui probablemente redirija al login
     }
@@ -475,17 +538,18 @@ class _ForumScreenState extends State<ForumScreen> {
     try {
       final result = await InternetAddress.lookup('google.com');
       bool hasConnection = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-      
+
       bool wasOffline = !_hasInternet;
-      
+
       setState(() {
         _hasInternet = hasConnection;
       });
-      
+
       // Si recuperamos la conexión, enviar mensajes pendientes y reactivar listener
       if (wasOffline && hasConnection && _pendingMessages.isNotEmpty) {
         if (kDebugMode) {
-          print('Conexión recuperada. Enviando ${_pendingMessages.length} mensajes pendientes...');
+          print(
+              'Conexión recuperada. Enviando ${_pendingMessages.length} mensajes pendientes...');
           // Ejecutar prueba de conectividad antes de intentar enviar mensajes
           _testFirestoreConnection();
         }
@@ -508,7 +572,8 @@ class _ForumScreenState extends State<ForumScreen> {
 
   // Verificación periódica de conexión
   void _startPeriodicConnectionCheck() {
-    _connectionCheckTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+    _connectionCheckTimer =
+        Timer.periodic(const Duration(seconds: 10), (timer) {
       _checkInternetConnection();
     });
   }
@@ -525,12 +590,13 @@ class _ForumScreenState extends State<ForumScreen> {
     // Si hay mensajes pendientes, verificar conexión más profunda
     if (_pendingMessages.isNotEmpty) {
       if (kDebugMode) {
-        print('📤 Hay mensajes pendientes, verificando conexión a Firestore...');
+        print(
+            '📤 Hay mensajes pendientes, verificando conexión a Firestore...');
       }
-      
+
       // Probar conexión a Firestore
       bool firestoreConnected = await _testFirestoreConnection();
-      
+
       if (firestoreConnected && _currentUserId != null) {
         if (kDebugMode) {
           print('✅ Conexión a Firestore confirmada, enviando mensajes...');
@@ -554,10 +620,12 @@ class _ForumScreenState extends State<ForumScreen> {
 
   // Enviar mensajes pendientes cuando se recupere la conexión
   Future<void> _sendPendingMessages() async {
-    if (_pendingMessages.isEmpty || !_hasInternet || _isSendingPendingMessages) return;
+    if (_pendingMessages.isEmpty || !_hasInternet || _isSendingPendingMessages)
+      return;
 
     if (kDebugMode) {
-      print('🚀 Iniciando envío de ${_pendingMessages.length} mensajes pendientes...');
+      print(
+          '🚀 Iniciando envío de ${_pendingMessages.length} mensajes pendientes...');
       print('   - Usuario actual: $_currentUserId');
       print('   - Nombre usuario: $_currentUserName');
       print('   - Internet disponible: $_hasInternet');
@@ -567,7 +635,8 @@ class _ForumScreenState extends State<ForumScreen> {
     final currentUser = _auth.currentUser;
     if (currentUser == null) {
       if (kDebugMode) {
-        print('❌ Usuario no autenticado, cancelando envío de mensajes pendientes');
+        print(
+            '❌ Usuario no autenticado, cancelando envío de mensajes pendientes');
       }
       return;
     }
@@ -597,17 +666,18 @@ class _ForumScreenState extends State<ForumScreen> {
 
     int sentCount = 0;
     int failedCount = 0;
-    
+
     for (final message in messagesToSend) {
       if (kDebugMode) {
-        print('📤 Procesando mensaje: ${message.content.substring(0, message.content.length > 20 ? 20 : message.content.length)}...');
+        print(
+            '📤 Procesando mensaje: ${message.content.substring(0, message.content.length > 20 ? 20 : message.content.length)}...');
         print('   - ID: ${message.id}');
         print('   - Include Image: ${message.includeImage}');
         print('   - Is Pending: ${message.isPending}');
         print('   - User ID: ${message.userId}');
         print('   - User Name: ${message.userName}');
       }
-      
+
       // Validar que el mensaje tenga datos válidos
       if (message.content.trim().isEmpty) {
         if (kDebugMode) {
@@ -615,7 +685,7 @@ class _ForumScreenState extends State<ForumScreen> {
         }
         continue;
       }
-      
+
       if (message.userId.isEmpty || message.userName.isEmpty) {
         if (kDebugMode) {
           print('   - ⚠️ Saltando mensaje con datos de usuario incompletos');
@@ -624,22 +694,23 @@ class _ForumScreenState extends State<ForumScreen> {
         _pendingMessages.add(message);
         continue;
       }
-      
+
       try {
         // Solo enviar mensajes de texto (sin imágenes)
         if (!message.includeImage) {
           if (kDebugMode) {
             print('   - Enviando mensaje de texto...');
           }
-          
+
           // Agregar timeout de 10 segundos para el envío
           await _sendMessageToFirestore(message).timeout(
             const Duration(seconds: 10),
             onTimeout: () {
-              throw TimeoutException('Timeout enviando mensaje a Firestore', const Duration(seconds: 10));
+              throw TimeoutException('Timeout enviando mensaje a Firestore',
+                  const Duration(seconds: 10));
             },
           );
-          
+
           sentCount++;
           sentMessageIds.add(message.id);
           if (kDebugMode) {
@@ -649,7 +720,8 @@ class _ForumScreenState extends State<ForumScreen> {
           // Si tiene imagen, mantener en pendientes
           failedCount++;
           if (kDebugMode) {
-            print('   - ❌ Mensaje con imagen no enviado (sin conexión para imágenes)');
+            print(
+                '   - ❌ Mensaje con imagen no enviado (sin conexión para imágenes)');
           }
         }
       } catch (e) {
@@ -665,7 +737,8 @@ class _ForumScreenState extends State<ForumScreen> {
     setState(() {
       _pendingMessages.removeWhere((msg) => sentMessageIds.contains(msg.id));
       // Remover también de la UI los mensajes que se enviaron exitosamente
-      _messages.removeWhere((msg) => msg.isPending && sentMessageIds.contains(msg.id));
+      _messages.removeWhere(
+          (msg) => msg.isPending && sentMessageIds.contains(msg.id));
     });
 
     // Actualizar caché
@@ -691,14 +764,14 @@ class _ForumScreenState extends State<ForumScreen> {
             duration: const Duration(seconds: 2),
           ),
         );
-        
+
         // Si todos los mensajes se enviaron exitosamente, ocultar la barra después de un momento
         if (_pendingMessages.isEmpty) {
           // Actualizar el timestamp del último mensaje para el listener
           if (_messages.isNotEmpty) {
             _lastMessageTimestamp = _messages.first.createdAt;
           }
-          
+
           Timer(const Duration(seconds: 3), () {
             if (mounted) {
               setState(() {}); // Forzar rebuild para ocultar la barra
@@ -706,11 +779,12 @@ class _ForumScreenState extends State<ForumScreen> {
           });
         }
       }
-      
+
       if (failedCount > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('$failedCount mensaje(s) fallaron. Se reintentará automáticamente.'),
+            content: Text(
+                '$failedCount mensaje(s) fallaron. Se reintentará automáticamente.'),
             backgroundColor: Colors.orange,
             duration: const Duration(seconds: 3),
           ),
@@ -728,25 +802,25 @@ class _ForumScreenState extends State<ForumScreen> {
     if (kDebugMode) {
       print('🧪 Probando conexión a Firestore...');
     }
-    
+
     try {
       final testDoc = await _firestore.collection('group_chat').add({
         'test': true,
         'createdAt': Timestamp.now(),
         'userId': _currentUserId ?? 'test',
       }).timeout(const Duration(seconds: 10));
-      
+
       if (kDebugMode) {
         print('✅ Prueba exitosa, documento creado con ID: ${testDoc.id}');
       }
-      
+
       // Eliminar el documento de prueba
       await testDoc.delete();
-      
+
       if (kDebugMode) {
         print('🗑️ Documento de prueba eliminado exitosamente');
       }
-      
+
       return true;
     } catch (e) {
       if (kDebugMode) {
@@ -773,11 +847,12 @@ class _ForumScreenState extends State<ForumScreen> {
         'userId': message.userId,
         'user_name': message.userName,
         'content': message.content,
-        'createdAt': Timestamp.now(), // Usar timestamp actual en lugar del mensaje
+        'createdAt':
+            Timestamp.now(), // Usar timestamp actual en lugar del mensaje
         'includeImage': message.includeImage,
         'imageUrl': message.imageUrl,
       });
-      
+
       if (kDebugMode) {
         print('✅ Mensaje enviado exitosamente con ID: ${docRef.id}');
       }
@@ -795,16 +870,16 @@ class _ForumScreenState extends State<ForumScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final pendingMessagesJson = prefs.getStringList('pending_messages') ?? [];
-      
+
       if (kDebugMode) {
         print('📱 Cargando mensajes pendientes desde SharedPreferences...');
         print('   - Mensajes en caché: ${pendingMessagesJson.length}');
       }
-      
+
       _pendingMessages = pendingMessagesJson
           .map((jsonString) => Message.fromJson(jsonDecode(jsonString)))
           .toList();
-      
+
       if (kDebugMode) {
         print('✅ Cargados ${_pendingMessages.length} mensajes pendientes');
         for (int i = 0; i < _pendingMessages.length; i++) {
@@ -827,11 +902,12 @@ class _ForumScreenState extends State<ForumScreen> {
       final pendingMessagesJson = _pendingMessages
           .map((message) => jsonEncode(message.toJson()))
           .toList();
-      
+
       await prefs.setStringList('pending_messages', pendingMessagesJson);
-      
+
       if (kDebugMode) {
-        print('Guardados ${_pendingMessages.length} mensajes pendientes en caché');
+        print(
+            'Guardados ${_pendingMessages.length} mensajes pendientes en caché');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -847,7 +923,7 @@ class _ForumScreenState extends State<ForumScreen> {
       final userPendingMessages = _pendingMessages
           .where((msg) => msg.userId == _currentUserId)
           .toList();
-      
+
       setState(() {
         // Evitar duplicados - solo agregar mensajes que no estén ya en la UI
         for (final pendingMsg in userPendingMessages) {
@@ -856,13 +932,14 @@ class _ForumScreenState extends State<ForumScreen> {
             _messages.insert(0, pendingMsg);
           }
         }
-        
+
         // Ordenar mensajes por timestamp (más recientes primero)
         _messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       });
-      
+
       if (kDebugMode) {
-        print('Agregados ${userPendingMessages.length} mensajes pendientes a la UI');
+        print(
+            'Agregados ${userPendingMessages.length} mensajes pendientes a la UI');
       }
     }
   }
@@ -876,7 +953,7 @@ class _ForumScreenState extends State<ForumScreen> {
       }
       return;
     }
-    
+
     _loadInitialMessages();
     _setupNewMessageListener();
   }
@@ -884,9 +961,9 @@ class _ForumScreenState extends State<ForumScreen> {
   // Cargar mensajes iniciales (últimos 150)
   Future<void> _loadInitialMessages() async {
     if (_currentUserId == null || !_hasInternet) return;
-    
+
     setState(() => _isLoadingHistory = true);
-    
+
     try {
       final querySnapshot = await _firestore
           .collection('group_chat')
@@ -907,7 +984,8 @@ class _ForumScreenState extends State<ForumScreen> {
 
       setState(() {
         _messages = messagesWithProfile;
-        _lastMessageTimestamp = messages.isNotEmpty ? messages.first.createdAt : null;
+        _lastMessageTimestamp =
+            messages.isNotEmpty ? messages.first.createdAt : null;
         _isLoadingHistory = false;
       });
     } catch (e) {
@@ -925,14 +1003,14 @@ class _ForumScreenState extends State<ForumScreen> {
     _messageSubscription = _firestore
         .collection('group_chat')
         .orderBy('createdAt', descending: false)
-        .where('createdAt', isGreaterThan: _lastMessageTimestamp ?? Timestamp.now())
+        .where('createdAt',
+            isGreaterThan: _lastMessageTimestamp ?? Timestamp.now())
         .snapshots()
         .listen((snapshot) async {
-      
       for (final change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
           final message = Message.fromFirestore(change.doc, _currentUserId!);
-          
+
           // Validar que el mensaje tenga contenido válido
           if (message.content.trim().isEmpty) {
             if (kDebugMode) {
@@ -940,30 +1018,32 @@ class _ForumScreenState extends State<ForumScreen> {
             }
             continue;
           }
-          
+
           // Verificar duplicados
           bool shouldAdd = true;
-          
-          // Para evitar duplicados, verificar si ya existe un mensaje con el mismo ID o 
+
+          // Para evitar duplicados, verificar si ya existe un mensaje con el mismo ID o
           // mismo userId, contenido y timestamp muy cercano
           final isDuplicate = _messages.any((existingMsg) {
             // Mismo ID
             if (existingMsg.id == message.id) return true;
-            
+
             // Mismo contenido, usuario y timestamp muy cercano (máximo 30 segundos de diferencia)
             // Esto evita duplicados cuando un mensaje pendiente se envía y vuelve desde Firestore
-            if (existingMsg.userId == message.userId && 
+            if (existingMsg.userId == message.userId &&
                 existingMsg.content.trim() == message.content.trim() &&
-                (existingMsg.createdAt.seconds - message.createdAt.seconds).abs() <= 30) {
-              
+                (existingMsg.createdAt.seconds - message.createdAt.seconds)
+                        .abs() <=
+                    30) {
               if (kDebugMode) {
                 print('🔍 Posible duplicado detectado:');
                 print('   - Contenido: "${message.content}"');
                 print('   - Existente isPending: ${existingMsg.isPending}');
                 print('   - Nuevo es de Firestore: ${!message.isPending}');
-                print('   - Diferencia tiempo: ${(existingMsg.createdAt.seconds - message.createdAt.seconds).abs()} segundos');
+                print(
+                    '   - Diferencia tiempo: ${(existingMsg.createdAt.seconds - message.createdAt.seconds).abs()} segundos');
               }
-              
+
               // Si el mensaje existente es pendiente y el nuevo viene de Firestore,
               // actualizar el existente en lugar de crear uno nuevo
               if (existingMsg.isPending && !message.isPending) {
@@ -984,42 +1064,46 @@ class _ForumScreenState extends State<ForumScreen> {
                       esPropio: message.esPropio,
                       isPending: false,
                     );
-                    
+
                     if (kDebugMode) {
-                      print('✅ Mensaje pendiente actualizado con datos de Firestore');
+                      print(
+                          '✅ Mensaje pendiente actualizado con datos de Firestore');
                     }
                   }
                 });
               }
-              
+
               return true;
             }
-            
+
             return false;
           });
-          
+
           shouldAdd = !isDuplicate;
-          
+
           if (shouldAdd) {
             if (kDebugMode) {
-              print('📥 Nuevo mensaje del stream: ${message.content.substring(0, message.content.length > 20 ? 20 : message.content.length)}...');
+              print(
+                  '📥 Nuevo mensaje del stream: ${message.content.substring(0, message.content.length > 20 ? 20 : message.content.length)}...');
               print('   - ID: ${message.id}');
               print('   - Usuario: ${message.userName}');
               print('   - UserID: ${message.userId}');
               print('   - Es propio: ${message.esPropio}');
               print('   - Contenido completo: "${message.content}"');
-              
+
               if (message.userName == "Usuario Desconocido") {
-                print('⚠️ ADVERTENCIA: Mensaje con "Usuario Desconocido" detectado');
+                print(
+                    '⚠️ ADVERTENCIA: Mensaje con "Usuario Desconocido" detectado');
               }
             }
-            
-            final messageWithProfile = await Message.loadUserProfileData(message);
-            
+
+            final messageWithProfile =
+                await Message.loadUserProfileData(message);
+
             setState(() {
               _messages.insert(0, messageWithProfile); // Insertar al principio
               _lastMessageTimestamp = message.createdAt;
-              
+
               // Mantener solo los últimos mensajes para evitar memoria excesiva
               if (_messages.length > _messageLimit * 2) {
                 _messages = _messages.take(_messageLimit).toList();
@@ -1027,7 +1111,8 @@ class _ForumScreenState extends State<ForumScreen> {
             });
           } else {
             if (kDebugMode) {
-              print('🔄 Mensaje duplicado ignorado: ${message.content.substring(0, message.content.length > 10 ? 10 : message.content.length)}...');
+              print(
+                  '🔄 Mensaje duplicado ignorado: ${message.content.substring(0, message.content.length > 10 ? 10 : message.content.length)}...');
             }
           }
         }
@@ -1049,7 +1134,9 @@ class _ForumScreenState extends State<ForumScreen> {
 
     if (_currentUserId == null || _currentUserName == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se puede enviar el mensaje. Usuario no identificado.')),
+        const SnackBar(
+            content: Text(
+                'No se puede enviar el mensaje. Usuario no identificado.')),
       );
       return;
     }
@@ -1061,7 +1148,8 @@ class _ForumScreenState extends State<ForumScreen> {
     if (!_hasInternet && _image != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Sin conexión. Las imágenes solo se pueden enviar con conexión a internet.'),
+          content: Text(
+              'Sin conexión. Las imágenes solo se pueden enviar con conexión a internet.'),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 3),
         ),
@@ -1073,7 +1161,7 @@ class _ForumScreenState extends State<ForumScreen> {
 
     final messageContent = _messageController.text.trim();
     final tempImage = _image; // Capturar imagen temporal
-    
+
     // OPTIMISTIC UPDATE: Agregar el mensaje inmediatamente a la UI
     final tempMessage = Message(
       id: 'temp_${DateTime.now().millisecondsSinceEpoch}', // ID temporal
@@ -1090,10 +1178,12 @@ class _ForumScreenState extends State<ForumScreen> {
     );
 
     // Cargar datos de perfil
-    final tempMessageWithProfile = await Message.loadUserProfileData(tempMessage);
-    
+    final tempMessageWithProfile =
+        await Message.loadUserProfileData(tempMessage);
+
     setState(() {
-      _messages.insert(0, tempMessageWithProfile); // Agregar inmediatamente a la UI
+      _messages.insert(
+          0, tempMessageWithProfile); // Agregar inmediatamente a la UI
       _messageController.clear();
       _image = null; // Limpiar imagen inmediatamente
       _isSending = false; // Quitar indicador de envío inmediatamente
@@ -1103,7 +1193,7 @@ class _ForumScreenState extends State<ForumScreen> {
       // Sin conexión: agregar a mensajes pendientes
       _pendingMessages.add(tempMessageWithProfile);
       await _savePendingMessages(); // Guardar en caché
-      
+
       // if (mounted) {
       //   ScaffoldMessenger.of(context).showSnackBar(
       //     const SnackBar(
@@ -1120,18 +1210,21 @@ class _ForumScreenState extends State<ForumScreen> {
       String? imageUrl; // Puede ser nulo si no hay imagen
       bool hasImage = false;
       if (tempImage != null) {
-        final photoId = FirebaseFirestore.instance.collection('group_chat').doc().id;
-        final ref = FirebaseStorage.instance.ref().child('group_chat/$_currentUserId/$photoId.jpg');
+        final photoId =
+            FirebaseFirestore.instance.collection('group_chat').doc().id;
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('group_chat/$_currentUserId/$photoId.jpg');
         await ref.putFile(tempImage);
         imageUrl = await ref.getDownloadURL();
         hasImage = true;
-        
+
         // Actualizar el mensaje temporal con la URL de la imagen
         final updatedMessage = tempMessageWithProfile.copyWithProfileData(
           tempMessageWithProfile.profilePictureUrl,
           tempMessageWithProfile.badgeProgress,
         );
-        
+
         setState(() {
           final index = _messages.indexWhere((m) => m.id == tempMessage.id);
           if (index != -1) {
@@ -1166,8 +1259,6 @@ class _ForumScreenState extends State<ForumScreen> {
       );
 
       await _sendMessageToFirestore(finalMessage);
-      
-
     } catch (e) {
       // Si hay error, remover el mensaje temporal y mostrar error
       setState(() {
@@ -1175,7 +1266,7 @@ class _ForumScreenState extends State<ForumScreen> {
         _messageController.text = messageContent; // Restaurar texto
         _image = tempImage; // Restaurar imagen
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al enviar mensaje: $e')),
@@ -1194,187 +1285,224 @@ class _ForumScreenState extends State<ForumScreen> {
       });
     }
   }
+
   void _quitarImagenSeleccionada() {
     setState(() {
       _image = null;
     });
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Foro de la Comunidad',
-          style: TextStyle(color: AppColors.textWhite),
-        ),
-        backgroundColor: AppColors.backgroundNavBarsLigth,
-        iconTheme: const IconThemeData(color: AppColors.textWhite),
-        elevation: 0,
-      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: AppColors.backgroundLightGradient,
         ),
-        child: Column(
-          children: [
-            // Indicador de estado de conexión
-            if (!_hasInternet || _pendingMessages.isNotEmpty || _isSendingPendingMessages)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                color: !_hasInternet 
-                    ? Colors.red 
-                    : (_isSendingPendingMessages || _pendingMessages.isNotEmpty) 
-                        ? Colors.orange 
-                        : AppColors.buttonGreen2,
-                child: Row(
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
                   children: [
-                    Icon(
-                      !_hasInternet 
-                          ? Icons.cloud_off 
-                          : (_isSendingPendingMessages || _pendingMessages.isNotEmpty) 
-                              ? Icons.cloud_upload 
-                              : Icons.cloud_done,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        !_hasInternet
-                            ? 'Sin conexión. Los mensajes se enviarán cuando se recupere la conexión.'
-                            : _isSendingPendingMessages
-                                ? 'Enviando mensajes pendientes...'
-                                : _pendingMessages.isNotEmpty
-                                    ? 'Preparando ${_pendingMessages.length} mensaje(s) para envío...'
-                                    : 'Conexión restablecida',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                        ),
+                    const Text(
+                      'Foro de la Comunidad',
+                      style: TextStyle(
+                        color: AppColors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
                       ),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
               ),
-            // Lista de mensajes
-            Expanded(
-              child: _isLoadingHistory
-                  ? const Center(
-                      child: CircularProgressIndicator(color: AppColors.textWhite),
-                    )
-                  : _messages.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No hay mensajes aún. ¡Sé el primero!',
-                            style: TextStyle(
-                              color: AppColors.textWhite,
-                              fontSize: 16,
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          reverse: true, // Para que el chat se muestre desde abajo
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          itemCount: _messages.length,
-                          itemBuilder: (context, index) {
-                            final message = _messages[index];
-                            
-                            return ForoMensajeCard(
-                              esPropio: message.esPropio,
-                              usuario: message.userName,
-                              userId: message.userId,
-                              hora: message.formattedTime,
-                              texto: message.content,
-                              imagen: message.includeImage ? message.imageUrl : null,
-                              profilePictureUrl: message.profilePictureUrl,
-                              badgeProgress: message.badgeProgress,
-                              isPending: message.isPending,
-                            );
-                          },
-                        ),
-            ),
-
-            if (_image != null) // Muestra esta sección solo si hay una imagen seleccionada
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                color: AppColors.slateGreen.withOpacity(0.5), // Un color de fondo sutil
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8.0),
-                      child: Image.file(
-                        _image!,
-                        width: 60,
-                        height: 60,
-                        fit: BoxFit.cover,
+              // Indicador de estado de conexión
+              if (!_hasInternet ||
+                  _pendingMessages.isNotEmpty ||
+                  _isSendingPendingMessages)
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  color: !_hasInternet
+                      ? Colors.red
+                      : (_isSendingPendingMessages ||
+                              _pendingMessages.isNotEmpty)
+                          ? Colors.orange
+                          : AppColors.buttonGreen2,
+                  child: Row(
+                    children: [
+                      Icon(
+                        !_hasInternet
+                            ? Icons.cloud_off
+                            : (_isSendingPendingMessages ||
+                                    _pendingMessages.isNotEmpty)
+                                ? Icons.cloud_upload
+                                : Icons.cloud_done,
+                        color: Colors.white,
+                        size: 16,
                       ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          !_hasInternet
+                              ? 'Sin conexión. Los mensajes se enviarán cuando se recupere la conexión.'
+                              : _isSendingPendingMessages
+                                  ? 'Enviando mensajes pendientes...'
+                                  : _pendingMessages.isNotEmpty
+                                      ? 'Preparando ${_pendingMessages.length} mensaje(s) para envío...'
+                                      : 'Conexión restablecida',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              // Lista de mensajes
+              Expanded(
+                child: _isLoadingHistory
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                            color: AppColors.textWhite),
+                      )
+                    : _messages.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No hay mensajes aún. ¡Sé el primero!',
+                              style: TextStyle(
+                                color: AppColors.textWhite,
+                                fontSize: 16,
+                              ),
+                            ),
+                          )
+                        : ListView.builder(
+                            reverse:
+                                true, // Para que el chat se muestre desde abajo
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            itemCount: _messages.length,
+                            itemBuilder: (context, index) {
+                              final message = _messages[index];
+
+                              return ForoMensajeCard(
+                                esPropio: message.esPropio,
+                                usuario: message.userName,
+                                userId: message.userId,
+                                hora: message.formattedTime,
+                                texto: message.content,
+                                imagen: message.includeImage
+                                    ? message.imageUrl
+                                    : null,
+                                profilePictureUrl: message.profilePictureUrl,
+                                badgeProgress: message.badgeProgress,
+                                isPending: message.isPending,
+                              );
+                            },
+                          ),
+              ),
+
+              if (_image !=
+                  null) // Muestra esta sección solo si hay una imagen seleccionada
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8.0, vertical: 4.0),
+                  color: AppColors.slateGreen
+                      .withOpacity(0.5), // Un color de fondo sutil
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8.0),
+                        child: Image.file(
+                          _image!,
+                          width: 60,
+                          height: 60,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Imagen seleccionada', // O el nombre del archivo si lo tienes
+                          style: TextStyle(
+                              color: AppColors.textWhite.withOpacity(0.8)),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        icon:
+                            const Icon(Icons.close, color: AppColors.textWhite),
+                        onPressed: _quitarImagenSeleccionada,
+                        tooltip: 'Quitar imagen',
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Campo de entrada
+              Container(
+                color: AppColors.slateGreen,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.add_a_photo),
+                      // ignore: deprecated_member_use
+                      color: _hasInternet
+                          ? AppColors.white
+                          : AppColors.white.withOpacity(0.5),
+                      tooltip: _hasInternet
+                          ? 'Adjuntar imagen'
+                          : 'Sin conexión - Solo mensajes de texto',
+                      onPressed: (_isSending || !_hasInternet)
+                          ? null
+                          : _seleccionarGaleria,
                     ),
-                    const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        'Imagen seleccionada', // O el nombre del archivo si lo tienes
-                        style: TextStyle(color: AppColors.textWhite.withOpacity(0.8)),
-                        overflow: TextOverflow.ellipsis,
+                      child: TextField(
+                        controller: _messageController,
+                        style: const TextStyle(color: AppColors.white),
+                        decoration: InputDecoration(
+                          hintText: 'Escribe un mensaje...',
+                          hintStyle: const TextStyle(color: AppColors.white),
+                          filled: true,
+                          fillColor: Colors.transparent,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                        ),
+                        onSubmitted: (_) => (_isSending ||
+                                (_messageController.text.trim().isEmpty &&
+                                    _image == null))
+                            ? null
+                            : _sendMessage(),
+                        minLines: 1,
+                        maxLines: 5,
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close, color: AppColors.textWhite),
-                      onPressed: _quitarImagenSeleccionada,
-                      tooltip: 'Quitar imagen',
+                      icon: _isSending
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: AppColors.white))
+                          : const Icon(Icons.send),
+                      color: AppColors.white,
+                      onPressed: _isSending ? null : _sendMessage,
                     ),
                   ],
                 ),
               ),
-
-            // Campo de entrada
-            Container(
-              color: AppColors.slateGreen,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.add_a_photo),
-                    // ignore: deprecated_member_use
-                    color: _hasInternet ? AppColors.white : AppColors.white.withOpacity(0.5),
-                    tooltip: _hasInternet 
-                        ? 'Adjuntar imagen' 
-                        : 'Sin conexión - Solo mensajes de texto',
-                    onPressed: (_isSending || !_hasInternet) ? null : _seleccionarGaleria,
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      style: const TextStyle(color: AppColors.white),
-                      decoration: InputDecoration(
-                        hintText: 'Escribe un mensaje...',
-                        hintStyle: const TextStyle(color: AppColors.white),
-                        filled: true,
-                        fillColor: Colors.transparent,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      ),
-                      onSubmitted: (_) => (_isSending || (_messageController.text.trim().isEmpty && _image == null)) ? null : _sendMessage(),
-                      minLines: 1,
-                      maxLines: 5,
-                    ),
-                  ),
-                  IconButton(
-                    icon: _isSending
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.white))
-                        : const Icon(Icons.send),
-                    color: AppColors.white,
-                    onPressed: _isSending ? null : _sendMessage,
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1384,8 +1512,9 @@ class _ForumScreenState extends State<ForumScreen> {
   void dispose() {
     _messageController.dispose();
     _messageSubscription?.cancel(); // Cancelar el stream
-    _connectionCheckTimer?.cancel(); // Cancelar el timer de verificación de conexión
-    
+    _connectionCheckTimer
+        ?.cancel(); // Cancelar el timer de verificación de conexión
+
     super.dispose();
   }
 }
@@ -1459,11 +1588,14 @@ class ForoMensajeCard extends StatelessWidget {
                     CircleAvatar(
                       backgroundColor: AppColors.seaGreen,
                       radius: 16,
-                      backgroundImage: profilePictureUrl != null && profilePictureUrl!.isNotEmpty
+                      backgroundImage: profilePictureUrl != null &&
+                              profilePictureUrl!.isNotEmpty
                           ? NetworkImage(profilePictureUrl!)
                           : null,
-                      child: profilePictureUrl == null || profilePictureUrl!.isEmpty
-                          ? const Icon(Icons.person, color: Colors.white, size: 18)
+                      child: profilePictureUrl == null ||
+                              profilePictureUrl!.isEmpty
+                          ? const Icon(Icons.person,
+                              color: Colors.white, size: 18)
                           : null,
                     ),
                     const SizedBox(width: 10),
@@ -1489,11 +1621,14 @@ class ForoMensajeCard extends StatelessWidget {
                                 const SizedBox(width: 6),
                                 // Progreso de insignias
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
                                     color: Colors.amber.shade100,
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: Colors.amber.shade300, width: 0.5),
+                                    border: Border.all(
+                                        color: Colors.amber.shade300,
+                                        width: 0.5),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -1533,7 +1668,8 @@ class ForoMensajeCard extends StatelessWidget {
                       const SizedBox(width: 8),
                       // Indicador de mensaje pendiente
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: Colors.orange.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(8),
@@ -1587,16 +1723,21 @@ class ForoMensajeCard extends StatelessWidget {
                         width: double.infinity,
                         fit: BoxFit.cover,
                         // Mostrar un indicador de carga mientras la imagen se descarga
-                        loadingBuilder: (BuildContext context, Widget child, ImageChunkEvent? loadingProgress) {
-                          if (loadingProgress == null) return child; // Imagen cargada
+                        loadingBuilder: (BuildContext context, Widget child,
+                            ImageChunkEvent? loadingProgress) {
+                          if (loadingProgress == null)
+                            return child; // Imagen cargada
                           return Container(
                             height: 160,
                             width: double.infinity,
-                            color: Colors.grey[300], // Un color de fondo mientras carga
+                            color: Colors
+                                .grey[300], // Un color de fondo mientras carga
                             child: Center(
                               child: CircularProgressIndicator(
-                                value: loadingProgress.expectedTotalBytes != null
-                                    ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                value: loadingProgress.expectedTotalBytes !=
+                                        null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
                                     : null,
                                 color: AppColors.textWhite,
                               ),
@@ -1604,7 +1745,8 @@ class ForoMensajeCard extends StatelessWidget {
                           );
                         },
                         // Mostrar un widget de error si la imagen no se puede cargar
-                        errorBuilder: (BuildContext context, Object exception, StackTrace? stackTrace) {
+                        errorBuilder: (BuildContext context, Object exception,
+                            StackTrace? stackTrace) {
                           return Container(
                             height: 160,
                             width: double.infinity,
@@ -1653,19 +1795,18 @@ class FullScreenImageViewer extends StatelessWidget {
 
       // Solicitar permisos de almacenamiento
       if (await _requestStoragePermission()) {
-        
         // Descargar la imagen
         final response = await http.get(Uri.parse(imageUrl));
         if (response.statusCode == 200) {
-          
           // Obtener directorio para guardar
           Directory? saveDirectory;
           String displayPath;
-          
+
           if (Platform.isAndroid) {
             // Intentar usar DCIM primero, si falla usar el directorio de la app
             try {
-              saveDirectory = Directory('/storage/emulated/0/DCIM/BioDetect_Chat');
+              saveDirectory =
+                  Directory('/storage/emulated/0/DCIM/BioDetect_Chat');
               displayPath = 'DCIM/BioDetect_Chat';
             } catch (e) {
               // Si falla, usar directorio de la app
@@ -1679,27 +1820,28 @@ class FullScreenImageViewer extends StatelessWidget {
             saveDirectory = Directory('${appDir.path}/BioDetect_Chat');
             displayPath = 'BioDetect_Chat';
           }
-          
+
           // Crear el directorio si no existe
           if (!await saveDirectory.exists()) {
             await saveDirectory.create(recursive: true);
           }
-          
+
           // Generar nombre único para el archivo
           final timestamp = DateTime.now().millisecondsSinceEpoch;
           final dateTime = DateTime.now();
-          final fileName = 'chat_${dateTime.year}${dateTime.month.toString().padLeft(2, '0')}${dateTime.day.toString().padLeft(2, '0')}_$timestamp.jpg';
+          final fileName =
+              'chat_${dateTime.year}${dateTime.month.toString().padLeft(2, '0')}${dateTime.day.toString().padLeft(2, '0')}_$timestamp.jpg';
           final filePath = '${saveDirectory.path}/$fileName';
-          
+
           // Guardar la imagen
           final file = File(filePath);
           await file.writeAsBytes(response.bodyBytes);
-          
+
           displayPath = '$displayPath/$fileName';
-          
+
           // Cerrar indicador de descarga
           if (context.mounted) Navigator.of(context).pop();
-          
+
           // Mostrar mensaje de éxito
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -1716,12 +1858,13 @@ class FullScreenImageViewer extends StatelessWidget {
       } else {
         // Cerrar indicador de descarga
         if (context.mounted) Navigator.of(context).pop();
-        
+
         // Mostrar mensaje de error de permisos
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Se necesitan permisos de almacenamiento para descargar la imagen'),
+              content: Text(
+                  'Se necesitan permisos de almacenamiento para descargar la imagen'),
               backgroundColor: Colors.red,
               duration: Duration(seconds: 3),
             ),
@@ -1731,7 +1874,7 @@ class FullScreenImageViewer extends StatelessWidget {
     } catch (e) {
       // Cerrar indicador de descarga
       if (context.mounted) Navigator.of(context).pop();
-      
+
       // Mostrar mensaje de error
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1750,7 +1893,7 @@ class FullScreenImageViewer extends StatelessWidget {
     if (Platform.isAndroid) {
       // Verificar permisos según la versión de Android
       PermissionStatus status;
-      
+
       // Para Android 11+ (API 30+)
       if (await Permission.manageExternalStorage.isRestricted == false) {
         status = await Permission.manageExternalStorage.status;
@@ -1764,7 +1907,7 @@ class FullScreenImageViewer extends StatelessWidget {
           status = await Permission.storage.request();
         }
       }
-      
+
       return status.isGranted;
     } else {
       // En iOS, generalmente no necesitamos permisos adicionales para el directorio de la app
@@ -1799,18 +1942,21 @@ class FullScreenImageViewer extends StatelessWidget {
             fit: BoxFit.contain,
             width: double.infinity,
             height: double.infinity,
-            loadingBuilder: (BuildContext context, Widget child, ImageChunkEvent? loadingProgress) {
+            loadingBuilder: (BuildContext context, Widget child,
+                ImageChunkEvent? loadingProgress) {
               if (loadingProgress == null) return child;
               return Center(
                 child: CircularProgressIndicator(
                   value: loadingProgress.expectedTotalBytes != null
-                      ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                      ? loadingProgress.cumulativeBytesLoaded /
+                          loadingProgress.expectedTotalBytes!
                       : null,
                   color: Colors.white,
                 ),
               );
             },
-            errorBuilder: (BuildContext context, Object exception, StackTrace? stackTrace) {
+            errorBuilder: (BuildContext context, Object exception,
+                StackTrace? stackTrace) {
               return const Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,

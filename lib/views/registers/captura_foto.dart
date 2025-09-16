@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter/foundation.dart'; // Para kDebugMode
+import 'package:crop_your_image/crop_your_image.dart';
 
 class CapturaFoto extends StatefulWidget {
   const CapturaFoto({super.key});
@@ -21,6 +22,25 @@ class CapturaFoto extends StatefulWidget {
 }
 
 class _CapturaFotoState extends State<CapturaFoto> {
+  final CropController _cropController = CropController();
+  bool _showCropper = false;
+  Uint8List? _imageBytes;
+
+  Future<void> _recortarImagen() async {
+    if (_image == null) return;
+    final bytes = await _image!.readAsBytes();
+    setState(() {
+      _imageBytes = bytes;
+      _showCropper = true;
+    });
+  }
+
+  Future<File> _saveCroppedBytesToFile(Uint8List croppedBytes) async {
+    final tempDir = Directory.systemTemp;
+    final tempFile = await File('${tempDir.path}/biodetect_cropped_${DateTime.now().millisecondsSinceEpoch}.jpg').create();
+    await tempFile.writeAsBytes(croppedBytes);
+    return tempFile;
+  }
   File? _image;
   bool _isProcessing = false;
   bool _hasInternet = true;
@@ -500,363 +520,446 @@ class _CapturaFotoState extends State<CapturaFoto> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: MediaQuery.of(context).size.height - 
-                          MediaQuery.of(context).padding.top - 
-                          MediaQuery.of(context).padding.bottom,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
+    return Stack(
+      children: [
+        Scaffold(
+          body: Container(
+            decoration: const BoxDecoration(
+              gradient: AppColors.backgroundLightGradient,
+            ),
+            child: SafeArea(
+              child: SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: MediaQuery.of(context).size.height -
+                        MediaQuery.of(context).padding.top -
+                        MediaQuery.of(context).padding.bottom,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.arrow_back_ios_new),
-                          color: AppColors.white,
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                        Expanded(
-                          child: Column(
-                            children: [
-                              const Text(
-                                'Nueva Fotografía',
-                                style: TextStyle(
-                                  color: AppColors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              Container(
-                                margin: const EdgeInsets.only(top: 4),
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: _hasInternet ? AppColors.buttonGreen2 : AppColors.warning,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  _hasInternet ? 'En línea' : 'Sin conexión',
-                                  style: const TextStyle(
-                                    color: AppColors.textBlack,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Stack(
-                          clipBehavior: Clip.none,
+                        Row(
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.schedule_outlined),
+                              icon: const Icon(Icons.arrow_back_ios_new),
                               color: AppColors.white,
-                              tooltip: 'Ver fotos pendientes',
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => const FotosPendientes(),
-                                  ),
-                                ).then((_) {
-                                  // Actualizar conteo cuando regrese de fotos pendientes
-                                  _loadPendingCount();
-                                });
-                              },
+                              onPressed: () => Navigator.pop(context),
                             ),
-                            if (_pendingCount > 0)
-                              Positioned(
-                                right: 8,
-                                top: 8,
-                                child: Container(
-                                  constraints: const BoxConstraints(
-                                    minWidth: 18,
-                                    minHeight: 18,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [
-                                        Color(0xFFFF6B6B),
-                                        Color(0xFFEE5A24),
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
-                                    borderRadius: BorderRadius.circular(10),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: const Color(0xFFFF6B6B).withOpacity(0.4),
-                                        spreadRadius: 1,
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Text(
-                                    _pendingCount.toString(),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  const Text(
+                                    'Nueva Fotografía',
+                                    style: TextStyle(
+                                      color: AppColors.white,
+                                      fontSize: 24,
                                       fontWeight: FontWeight.bold,
                                     ),
                                     textAlign: TextAlign.center,
                                   ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    // Mensaje de sin conexión (movido aquí desde abajo)
-                    if (!_hasInternet) ...[
-                      Card(
-                        color: AppColors.backgroundCard,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        elevation: 4,
-                        child: const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.info_outline, color: AppColors.warning, size: 20),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Sin conexión',
-                                    style: TextStyle(
-                                      color: AppColors.warning,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 4),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: _hasInternet ? AppColors.buttonGreen2 : AppColors.warning,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      _hasInternet ? 'En línea' : 'Sin conexión',
+                                      style: const TextStyle(
+                                        color: AppColors.textBlack,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
-                              SizedBox(height: 8),
-                              Text(
-                                'Las fotos se guardarán como pendientes y podrás analizarlas cuando recuperes la conexión.',
-                                style: TextStyle(
-                                  color: AppColors.textWhite,
-                                  fontSize: 14,
+                            ),
+                            Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.schedule_outlined),
+                                  color: AppColors.white,
+                                  tooltip: 'Ver fotos pendientes',
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const FotosPendientes(),
+                                      ),
+                                    ).then((_) {
+                                      _loadPendingCount();
+                                    });
+                                  },
                                 ),
-                              ),
-                            ],
+                                if (_pendingCount > 0)
+                                  Positioned(
+                                    right: 8,
+                                    top: 8,
+                                    child: Container(
+                                      constraints: const BoxConstraints(
+                                        minWidth: 18,
+                                        minHeight: 18,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFFFF6B6B),
+                                            Color(0xFFEE5A24),
+                                          ],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                        borderRadius: BorderRadius.circular(10),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFFFF6B6B).withOpacity(0.4),
+                                            spreadRadius: 1,
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Text(
+                                        _pendingCount.toString(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        // ...
+                        Container(
+                          height: 440,
+                          decoration: BoxDecoration(
+                            color: AppColors.backgroundCard,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: AppColors.buttonGreen2,
+                              width: 2,
+                            ),
                           ),
+                          alignment: Alignment.center,
+                          child: _image == null
+                              ? const Text(
+                                  'Aquí se mostrará la foto',
+                                  style: TextStyle(
+                                    color: AppColors.textPaleGreen,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                )
+                              : Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(18),
+                                      child: Image.file(
+                                        _image!,
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                        height: 440,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 12,
+                                      right: 12,
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(24),
+                                          onTap: _isProcessing ? null : _recortarImagen,
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: AppColors.buttonGreen2.withOpacity(0.85),
+                                              borderRadius: BorderRadius.circular(24),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black.withOpacity(0.15),
+                                                  blurRadius: 4,
+                                                  offset: const Offset(0, 2),
+                                                ),
+                                              ],
+                                            ),
+                                            padding: const EdgeInsets.all(8),
+                                            child: const Icon(
+                                              Icons.crop,
+                                              color: AppColors.textBlack,
+                                              size: 28,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                    Container(
-                      height: 440,
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundCard,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: AppColors.buttonGreen2,
-                          width: 2,
-                        ),
-                      ),
-                      alignment: Alignment.center,
-                      child: _image == null
-                          ? const Text(
-                              'Aquí se mostrará la foto',
-                              style: TextStyle(
-                                color: AppColors.textPaleGreen,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              textAlign: TextAlign.center,
-                            )
-                          : ClipRRect(
-                              borderRadius: BorderRadius.circular(18),
-                              child: Image.file(
-                                _image!, 
-                                fit: BoxFit.cover, 
-                                width: double.infinity, 
-                                height: 440,
+                        const SizedBox(height: 16),
+                        if (_image == null) ...[
+                          Card(
+                            color: AppColors.backgroundCard,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 4,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (!_hasInternet) ...[
+                                    Row(
+                                      children: const [
+                                        Icon(Icons.info_outline, color: AppColors.warning, size: 20),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Sin conexión',
+                                          style: TextStyle(
+                                            color: AppColors.warning,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'Podrás guardar las fotos como pendientes y analizarlas cuando recuperes la conexión.',
+                                      style: TextStyle(
+                                        color: AppColors.textWhite,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
+                                  const Text(
+                                    'Asegúrate de:',
+                                    style: TextStyle(
+                                      color: AppColors.buttonGreen2,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    '• Enfocar bien el artrópodo',
+                                    style: TextStyle(
+                                      color: AppColors.textWhite,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const Text(
+                                    '• Tener buena iluminación',
+                                    style: TextStyle(
+                                      color: AppColors.textWhite,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const Text(
+                                    '• Sin objetos distractores',
+                                    style: TextStyle(
+                                      color: AppColors.textWhite,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                    ),
-                    const SizedBox(height: 20),
-                    if (_image == null) ...[
-                      Card(
-                        color: AppColors.backgroundCard,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        elevation: 4,
-                        child: const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Asegúrate de:',
-                                style: TextStyle(
-                                  color: AppColors.buttonGreen2,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              SizedBox(height: 8),
-                              Text(
-                                '• Enfocar bien el artrópodo',
-                                style: TextStyle(
-                                  color: AppColors.textWhite,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              Text(
-                                '• Tener buena iluminación',
-                                style: TextStyle(
-                                  color: AppColors.textWhite,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              Text(
-                                '• Sin objetos distractores',
-                                style: TextStyle(
-                                  color: AppColors.textWhite,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
                           ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 30),
-                    if (_image != null) ...[
-                      Row(
-                        children: [
-                          // --- NUEVO BOTÓN "GUARDAR COMO PENDIENTE" ---
-                          if (_hasInternet) // Visible solo en caso de tener internet, por si el usuario quiere guardar para más tarde
-                            Padding(
-                              padding: const EdgeInsets.only(right: 8.0),
-                              child: IconButton(
-                                icon: const Icon(Icons.save_as_outlined),
-                                color: AppColors.textWhite,
-                                style: IconButton.styleFrom(
-                                  backgroundColor: AppColors.buttonBrown3,
+                          const SizedBox(height: 30),
+                        ],
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.buttonGreen2,
+                                  foregroundColor: AppColors.textBlack,
+                                  elevation: 4,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  padding: const EdgeInsets.all(12),
+                                  minimumSize: const Size(0, 48),
                                 ),
-                                tooltip: 'Guardar como pendiente',
-                                onPressed: _isProcessing ? null : _guardarPendiente,
+                                onPressed: _tomarFoto,
+                                child: const Text(
+                                  'Capturar',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
                               ),
                             ),
-                          // --- FIN DEL NUEVO BOTÓN ---
-
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              icon: _isProcessing
-                                  ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  color: AppColors.textWhite,
-                                  strokeWidth: 2.5,
-                                ),
-                              )
-                                  : Icon(
-                                _hasInternet ? Icons.psychology : Icons.save, // El icono original
-                                color: AppColors.textWhite,
-                              ),
-                              label: Text(
-                                _isProcessing
-                                    ? (_hasInternet ? 'Analizando...' : 'Guardando...')
-                                    : (_hasInternet ? 'Analizar' : 'Guardar como pendiente'),
-                                style: const TextStyle(
-                                  color: AppColors.textWhite,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              style: ButtonStyle(
-                                backgroundColor: WidgetStateProperty.all(
-                                  _hasInternet ? AppColors.buttonBlue2 : AppColors.buttonBrown3,
-                                ),
-                                shape: WidgetStateProperty.all<RoundedRectangleBorder>(
-                                  RoundedRectangleBorder(
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.buttonBrown3,
+                                  foregroundColor: AppColors.textBlack,
+                                  elevation: 4,
+                                  shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
+                                  minimumSize: const Size(0, 48),
                                 ),
-                                minimumSize: WidgetStateProperty.all(const Size(0, 48)), // Altura consistente
-                                elevation: WidgetStateProperty.all(_isProcessing ? 0 : 4),
+                                onPressed: _seleccionarGaleria,
+                                child: const Text(
+                                  'Galería',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
                               ),
-                              onPressed: _isProcessing ? null : _analizarFoto, // Tu función original
                             ),
+                          ],
+                        ),
+                        if (_image != null) ...[
+                          const SizedBox(height: 20),
+                          Row(
+                            children: [
+                              if (_hasInternet)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8.0),
+                                  child: IconButton(
+                                    icon: const Icon(Icons.save_as_outlined),
+                                    color: AppColors.textWhite,
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: AppColors.buttonBrown3,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      padding: const EdgeInsets.all(12),
+                                    ),
+                                    tooltip: 'Guardar como pendiente',
+                                    onPressed: _isProcessing ? null : _guardarPendiente,
+                                  ),
+                                ),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  icon: _isProcessing
+                                      ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            color: AppColors.textWhite,
+                                            strokeWidth: 2.5,
+                                          ),
+                                        )
+                                      : Icon(
+                                          _hasInternet ? Icons.psychology : Icons.save,
+                                          color: AppColors.textWhite,
+                                        ),
+                                  label: Text(
+                                    _isProcessing
+                                        ? (_hasInternet ? 'Analizando...' : 'Guardando...')
+                                        : (_hasInternet ? 'Analizar' : 'Guardar como pendiente'),
+                                    style: const TextStyle(
+                                      color: AppColors.textWhite,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  style: ButtonStyle(
+                                    backgroundColor: WidgetStateProperty.all(
+                                        _hasInternet ? AppColors.buttonBlue2 : AppColors.buttonBrown3),
+                                    shape: WidgetStateProperty.all<RoundedRectangleBorder>(
+                                      RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    minimumSize: WidgetStateProperty.all(const Size(0, 48)),
+                                    elevation: WidgetStateProperty.all(_isProcessing ? 0 : 4),
+                                  ),
+                                  onPressed: _isProcessing ? null : _analizarFoto,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.buttonGreen2,
-                              foregroundColor: AppColors.textBlack,
-                              elevation: 4,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              minimumSize: const Size(0, 48),
-                            ),
-                            onPressed: _tomarFoto,
-                            child: const Text(
-                              'Capturar',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.buttonBrown3,
-                              foregroundColor: AppColors.textBlack,
-                              elevation: 4,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              minimumSize: const Size(0, 48),
-                            ),
-                            onPressed: _seleccionarGaleria,
-                            child: const Text(
-                              'Galería',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
+        if (_showCropper && _imageBytes != null)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withOpacity(0.7),
+              child: Center(
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.backgroundCard,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 320,
+                          height: 320,
+                          child: Crop(
+                            controller: _cropController,
+                            image: _imageBytes!,
+                            onCropped: (croppedData) async {
+                              final croppedFile = await _saveCroppedBytesToFile(croppedData);
+                              setState(() {
+                                _image = croppedFile;
+                                _showCropper = false;
+                              });
+                            },
+                            initialSize: 0.8,
+                            baseColor: Colors.black,
+                            maskColor: Colors.black.withOpacity(0.4),
+                            cornerDotBuilder: (size, edgeAlignment) => const DotControl(color: Colors.white),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            ElevatedButton(
+                              onPressed: () => _cropController.crop(),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.buttonGreen2,
+                                foregroundColor: AppColors.textBlack,
+                              ),
+                              child: const Text('Recortar'),
+                            ),
+                            const SizedBox(width: 16),
+                            ElevatedButton(
+                              onPressed: () => setState(() => _showCropper = false),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.warning,
+                                foregroundColor: AppColors.textBlack,
+                              ),
+                              child: const Text('Cancelar'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
