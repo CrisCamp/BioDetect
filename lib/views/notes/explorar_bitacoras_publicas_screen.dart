@@ -181,80 +181,84 @@ class _ExplorarBitacorasPublicasScreenState extends State<ExplorarBitacorasPubli
         child: SafeArea(
           child: Column(
             children: [
-              // Header con indicador de conexión
-              Container(
-                color: AppColors.slateGreen,
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                child: Row(
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
                   children: [
-                    Expanded(
-                      child: Column(
-                        children: [
-                          const Text(
-                            'Bitácoras públicas',
-                            style: TextStyle(
-                              color: AppColors.textWhite,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          Container(
-                            margin: const EdgeInsets.only(top: 4),
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: _hasInternet ? AppColors.buttonGreen2 : AppColors.warning,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              _hasInternet ? 'En línea' : 'Sin conexión',
-                              style: const TextStyle(
-                                color: AppColors.textBlack,
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
+                    const Text(
+                      'Bitácoras',
+                      style: TextStyle(
+                        color: AppColors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
                       ),
+                      textAlign: TextAlign.center,
                     ),
-                    // Icono para ver mis bitácoras
-                    IconButton(
-                      icon: const Icon(Icons.library_books_outlined),
-                      color: AppColors.textWhite,
-                      tooltip: 'Mis bitácoras',
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const MisBitacorasScreen(),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _hasInternet ? AppColors.buttonGreen2 : AppColors.warning,
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                        );
-                      },
-                    ),
-                    // Icono para crear nueva bitácora
-                    IconButton(
-                      icon: const Icon(Icons.add_circle_outline),
-                      color: AppColors.textWhite,
-                      tooltip: 'Crear bitácora',
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const CrearEditarBitacoraScreen(),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _hasInternet ? Icons.wifi : Icons.wifi_off,
+                                size: 16,
+                                color: AppColors.textBlack,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _hasInternet ? 'En línea' : 'Sin conexión',
+                                style: const TextStyle(
+                                  color: AppColors.textBlack,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
-                        ).then((_) {
-                          // Recargar bitácoras después de crear/editar
-                          _retryLoad();
-                        });
-                      },
-                    ),
-                    // Icono para refrescar
-                    IconButton(
-                      icon: const Icon(Icons.refresh),
-                      color: AppColors.textWhite,
-                      tooltip: 'Refrescar',
-                      onPressed: _isLoading ? null : () => _retryLoad(),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.library_books_outlined),
+                          color: AppColors.textWhite,
+                          tooltip: 'Mis bitácoras',
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const MisBitacorasScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle_outline),
+                          color: AppColors.textWhite,
+                          tooltip: 'Crear bitácora',
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const CrearEditarBitacoraScreen(),
+                              ),
+                            ).then((_) {
+                              _retryLoad();
+                            });
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.refresh),
+                          color: AppColors.textWhite,
+                          tooltip: 'Refrescar',
+                          onPressed: _isLoading ? null : () => _retryLoad(),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -525,25 +529,39 @@ class BitacoraPublicaListItem extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 2),
+                    // Primera fila: registros
                     Row(
                       children: [
                         const Icon(Icons.photo_library, size: 14, color: AppColors.textPaleGreen),
                         const SizedBox(width: 4),
-                        Text(
-                          '$registros registros',
-                          style: const TextStyle(
-                            color: AppColors.textPaleGreen,
-                            fontSize: 13,
+                        Expanded(
+                          child: Text(
+                            '$registros registros',
+                            style: const TextStyle(
+                              color: AppColors.textPaleGreen,
+                              fontSize: 13,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        const Icon(Icons.calendar_today, size: 14, color: AppColors.textPaleGreen),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    // Segunda fila: fecha
+                    Row(
+                      children: [
+                        const Icon(Icons.calendar_today, size: 14, color: Color.fromARGB(255, 169, 193, 170)),
                         const SizedBox(width: 4),
-                        Text(
-                          fechaCreacion,
-                          style: const TextStyle(
-                            color: AppColors.textPaleGreen,
-                            fontSize: 13,
+                        Expanded(
+                          child: Text(
+                            fechaCreacion,
+                            style: const TextStyle(
+                              color: AppColors.textPaleGreen,
+                              fontSize: 13,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],

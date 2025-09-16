@@ -51,6 +51,9 @@ dependencies:
   googleapis: ^14.0.0
   googleapis_auth: ^1.6.0
 
+  # Recortar imagenes
+  crop_your_image: ^0.7.5
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

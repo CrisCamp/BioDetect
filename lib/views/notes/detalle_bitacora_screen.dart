@@ -102,15 +102,33 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
         authorName: _authorName,
       );
 
-      // Vista previa del PDF
-      await PdfService.previewPdf(pdfBytes, fileName);
+      // Guardar directamente el PDF en el dispositivo
+      final savedPath = await PdfService.saveDirectlyToPdf(pdfBytes, fileName);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('PDF guardado exitosamente en: $savedPath'),
+            backgroundColor: AppColors.buttonGreen2,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Entendido',
+              textColor: AppColors.textBlack,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
+          ),
+        );
+      }
 
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al generar PDF: $e'),
+            content: Text('Error al guardar PDF: $e'),
             backgroundColor: AppColors.warning,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -170,12 +188,13 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          // Botón de guardar directo
           FloatingActionButton(
             backgroundColor: AppColors.buttonBlue1,
             foregroundColor: AppColors.textWhite,
-            heroTag: "generate_pdf",
+            heroTag: "save_pdf",
             onPressed: (_isGeneratingPdf || _isSharing) ? null : _generarPdf,
-            tooltip: _isGeneratingPdf ? 'Generando...' : 'Generar PDF',
+            tooltip: _isGeneratingPdf ? 'Guardando...' : 'Guardar PDF',
             child: _isGeneratingPdf 
                 ? const SizedBox(
                     width: 20,
@@ -185,9 +204,10 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
                       strokeWidth: 2,
                     ),
                   )
-                : const Icon(Icons.picture_as_pdf),
+                : const Icon(Icons.save),
           ),
           const SizedBox(width: 16),
+          // Botón de compartir
           FloatingActionButton(
             backgroundColor: AppColors.buttonGreen1,
             foregroundColor: AppColors.textWhite,
