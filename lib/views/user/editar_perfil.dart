@@ -3,7 +3,6 @@ import 'package:biodetect/themes.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:biodetect/views/session/inicio_sesion.dart';
 import 'package:biodetect/views/user/cambiar_contrasena.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -19,7 +18,6 @@ class EditarPerfil extends StatefulWidget {
 class _EditarPerfilState extends State<EditarPerfil> {
   final _formKey = GlobalKey<FormState>();
   final _nombreController = TextEditingController();
-  final _correoController = TextEditingController();
   bool _loading = false;
   String? _profileUrl;
   bool _hasInternet = true;
@@ -39,7 +37,6 @@ class _EditarPerfilState extends State<EditarPerfil> {
   void dispose() {
     _internetTimer?.cancel();
     _nombreController.dispose();
-    _correoController.dispose();
     super.dispose();
   }
 
@@ -52,7 +49,7 @@ class _EditarPerfilState extends State<EditarPerfil> {
           _hasInternet = hasInternet;
         });
         if (!hasInternet) {
-          Navigator.of(context).pop(); // Solo cierra la ventana actual
+          Navigator.of(context).pop();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Se requiere conexión a internet para editar el perfil')),
           );
@@ -63,7 +60,7 @@ class _EditarPerfilState extends State<EditarPerfil> {
         setState(() {
           _hasInternet = false;
         });
-        Navigator.of(context).pop(); // Solo cierra la ventana actual
+        Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Se requiere conexión a internet para editar el perfil')),
         );
@@ -74,12 +71,15 @@ class _EditarPerfilState extends State<EditarPerfil> {
   Future<void> _cargarDatosUsuario() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    
     final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     final data = doc.data();
     if (data != null) {
       _nombreController.text = data['fullname'] ?? '';
-      _correoController.text = data['email'] ?? '';
       _profileUrl = data['profilePicture'];
+    } else {
+      _nombreController.text = user.displayName ?? '';
+      _profileUrl = user.photoURL;
     }
     setState(() {});
   }
@@ -102,12 +102,15 @@ class _EditarPerfilState extends State<EditarPerfil> {
           .child('profile_pictures/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg');
       await ref.putData(await image.readAsBytes());
       final url = await ref.getDownloadURL();
+      
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'profilePicture': url,
       });
+      
       setState(() {
         _profileUrl = url;
       });
+      
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Foto de perfil actualizada')),
       );
@@ -128,35 +131,14 @@ class _EditarPerfilState extends State<EditarPerfil> {
     if (user == null) return;
 
     final nuevoNombre = _nombreController.text.trim();
-    final nuevoCorreo = _correoController.text.trim();
 
     try {
-      if (nuevoCorreo != user.email) {
-        await user.verifyBeforeUpdateEmail(nuevoCorreo);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Te hemos enviado un enlace de verificación a tu nuevo correo. '
-                'Por favor, verifica tu correo y vuelve a iniciar sesión para completar el cambio.',
-              ),
-            ),
-          );
-          await Future.delayed(const Duration(seconds: 2));
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const InicioSesion()),
-            (route) => false,
-          );
-        }
-        await FirebaseAuth.instance.signOut();
-        return;
-      }
-
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'fullname': nuevoNombre,
       });
+      
       await user.updateDisplayName(nuevoNombre);
-      user.reload(); // Actualiza el usuario en Firebase Auth
+      await user.reload();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -166,9 +148,6 @@ class _EditarPerfilState extends State<EditarPerfil> {
       }
     } on FirebaseAuthException catch (e) {
       String msg = 'Error al actualizar: ${e.message}';
-      if (e.code == 'requires-recent-login') {
-        msg = 'Por seguridad, vuelve a iniciar sesión para cambiar el correo.';
-      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(msg)),
       );
@@ -266,7 +245,8 @@ class _EditarPerfilState extends State<EditarPerfil> {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 32),
+                        
                         TextFormField(
                           controller: _nombreController,
                           decoration: InputDecoration(
@@ -277,36 +257,14 @@ class _EditarPerfilState extends State<EditarPerfil> {
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
+                            prefixIcon: const Icon(Icons.person_outline, color: AppColors.textWhite),
                           ),
                           style: const TextStyle(color: AppColors.textWhite),
                           validator: (value) =>
                               value == null || value.trim().isEmpty ? 'Ingresa tu nombre' : null,
                         ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _correoController,
-                          decoration: InputDecoration(
-                            labelText: 'Correo electrónico',
-                            labelStyle: const TextStyle(color: AppColors.textWhite),
-                            filled: true,
-                            fillColor: AppColors.slateGreen,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          style: const TextStyle(color: AppColors.textWhite),
-                          keyboardType: TextInputType.emailAddress,
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Ingresa tu correo';
-                            }
-                            if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
-                              return 'Correo no válido';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 32),
+                        
                         Row(
                           children: [
                             Expanded(
@@ -349,6 +307,7 @@ class _EditarPerfilState extends State<EditarPerfil> {
                           ],
                         ),
                         const SizedBox(height: 36),
+                        
                         Center(
                           child: TextButton(
                             onPressed: () {

@@ -42,21 +42,6 @@ class AppColors {
   static const Color warningDark = Color(0xFFFF0000);
   static const Color caution = Color(0xFFFFD166);
 
-  // ========== MODO OSCURO ==========
-  static const Color backgroundDarkPrimary = navyBlue;
-  static const Color backgroundDarkSecondary = pineGreen;
-  static const Gradient backgroundDarkGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [
-      backgroundDarkPrimary,
-      backgroundDarkSecondary,
-    ],
-  );
-  static const Color backgroundNavBarsDark = blueDark;
-  static const Color selectedItemDarkBottomNavBar = aquaBlue;
-  static const Color unselectedItemDarkBottomNavBar = white;
-
   // ========== MODO CLARO ==========
   static const Color backgroundLightPrimary = deepGreen;
   static const Color backgroundLightSecondary = paleGreen;

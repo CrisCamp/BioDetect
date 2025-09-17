@@ -19,7 +19,6 @@ class _CambiarContrasenaScreenState extends State<CambiarContrasenaScreen> {
   String? _error;
   int _passwordStrength = 0;
 
-  // Ojos para mostrar/ocultar contraseñas
   bool _showCurrent = false;
   bool _showNew = false;
   bool _showConfirm = false;
@@ -57,14 +56,12 @@ class _CambiarContrasenaScreenState extends State<CambiarContrasenaScreen> {
     }
 
     try {
-      // Reautenticación
       final cred = EmailAuthProvider.credential(
         email: user!.email!,
         password: currentPassword,
       );
       await user.reauthenticateWithCredential(cred);
 
-      // Cambiar contraseña
       await user.updatePassword(newPassword);
 
       setState(() {
@@ -124,7 +121,6 @@ class _CambiarContrasenaScreenState extends State<CambiarContrasenaScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Título
                       const Text(
                         'Cambiar Contraseña',
                         style: TextStyle(
@@ -135,7 +131,6 @@ class _CambiarContrasenaScreenState extends State<CambiarContrasenaScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 32),
-                      // Campo: Contraseña actual
                       TextFormField(
                         controller: _currentController,
                         obscureText: !_showCurrent,
@@ -164,7 +159,6 @@ class _CambiarContrasenaScreenState extends State<CambiarContrasenaScreen> {
                         style: const TextStyle(color: AppColors.textBlack),
                       ),
                       const SizedBox(height: 20),
-                      // Campo: Nueva contraseña
                       TextFormField(
                         controller: _newController,
                         obscureText: !_showNew,
@@ -193,7 +187,6 @@ class _CambiarContrasenaScreenState extends State<CambiarContrasenaScreen> {
                         ),
                         style: const TextStyle(color: AppColors.textBlack),
                       ),
-                      // Barra de fortaleza de contraseña
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Row(
@@ -213,7 +206,6 @@ class _CambiarContrasenaScreenState extends State<CambiarContrasenaScreen> {
                           }),
                         ),
                       ),
-                      // Campo: Confirmar nueva contraseña
                       TextFormField(
                         controller: _confirmController,
                         obscureText: !_showConfirm,
@@ -242,20 +234,31 @@ class _CambiarContrasenaScreenState extends State<CambiarContrasenaScreen> {
                         style: const TextStyle(color: AppColors.textBlack),
                       ),
                       const SizedBox(height: 28),
-                      // Mensaje de error
                       if (_error != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(
-                              color: AppColors.warning,
-                              fontSize: 13,
-                            ),
-                            textAlign: TextAlign.center,
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.warning, width: 1),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline, color: AppColors.warning, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _error!,
+                                  style: const TextStyle(
+                                    color: AppColors.textWhite,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      // Botones de acción
                       Row(
                         children: [
                           Expanded(
@@ -312,7 +315,6 @@ class _CambiarContrasenaScreenState extends State<CambiarContrasenaScreen> {
                 ),
               ),
             ),
-            // ProgressBar para carga
             if (_loading)
               Container(
                 color: Colors.black26,

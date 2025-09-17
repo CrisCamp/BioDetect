@@ -39,32 +39,71 @@ class _RegistroState extends State<Registro> {
   }
 
   Future<void> _onRegistrar() async {
-    if (!_aceptaTerminos) {
+    setState(() {
+      _error = null;
+    });
+
+    if (_nombreController.text.trim().isEmpty) {
       setState(() {
-        _error = 'Debes aceptar los términos y condiciones.';
+        _error = 'Por favor ingresa tu nombre completo.';
       });
       return;
     }
+    
+    if (_emailController.text.trim().isEmpty) {
+      setState(() {
+        _error = 'Por favor ingresa tu correo electrónico.';
+      });
+      return;
+    }
+    
+    if (_passwordController.text.isEmpty) {
+      setState(() {
+        _error = 'Por favor ingresa una contraseña.';
+      });
+      return;
+    }
+    
+    if (_confirmController.text.isEmpty) {
+      setState(() {
+        _error = 'Por favor confirma tu contraseña.';
+      });
+      return;
+    }
+
+    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(_emailController.text.trim())) {
+      setState(() {
+        _error = 'Por favor ingresa un correo electrónico válido.';
+      });
+      return;
+    }
+
+    if (_passwordStrength < 3) {
+      setState(() {
+        _error = 'La contraseña debe tener al menos 8 caracteres, incluir mayúsculas, minúsculas y números.';
+      });
+      return;
+    }
+
     if (_passwordController.text != _confirmController.text) {
       setState(() {
         _error = 'Las contraseñas no coinciden.';
       });
       return;
     }
-    if (_passwordStrength < 3) {
+
+    if (!_aceptaTerminos) {
       setState(() {
-        _error = 'La contraseña es demasiado débil.';
+        _error = 'Debes aceptar los términos y condiciones para continuar.';
       });
       return;
     }
 
     setState(() {
       _loading = true;
-      _error = null;
     });
 
     try {
-      // Crear cuenta
       final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
@@ -72,12 +111,10 @@ class _RegistroState extends State<Registro> {
       
       final user = credential.user;
       if (user != null) {
-        // Actualizar displayName
         await user.updateDisplayName(_nombreController.text.trim());
         
         await user.sendEmailVerification();
         
-        // Crear documento del usuario en Firestore
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
           'uid': user.uid,
           'email': user.email,
@@ -88,7 +125,6 @@ class _RegistroState extends State<Registro> {
           'badges': [],
         });
 
-        // Crear documento user_activity con estructura completa
         await _createUserActivityDocument(user.uid);
 
         final prefs = await SharedPreferences.getInstance();
@@ -112,13 +148,16 @@ class _RegistroState extends State<Registro> {
       setState(() {
         switch (e.code) {
           case 'email-already-in-use':
-            _error = 'Ya existe una cuenta con este correo.';
+            _error = 'Ya existe una cuenta con este correo electrónico.';
             break;
           case 'invalid-email':
-            _error = 'El correo no es válido.';
+            _error = 'El formato del correo electrónico no es válido.';
             break;
           case 'weak-password':
-            _error = 'La contraseña es demasiado débil.';
+            _error = 'La contraseña es demasiado débil. Debe tener al menos 8 caracteres.';
+            break;
+          case 'network-request-failed':
+            _error = 'Error de conexión. Verifica tu internet e intenta de nuevo.';
             break;
           default:
             _error = 'No se pudo crear la cuenta. Verifica tus datos e inténtalo de nuevo.';
@@ -126,7 +165,7 @@ class _RegistroState extends State<Registro> {
       });
     } catch (e) {
       setState(() {
-        _error = 'Error inesperado: $e';
+        _error = 'Error inesperado. Por favor intenta de nuevo más tarde.';
       });
     } finally {
       setState(() {
@@ -135,7 +174,6 @@ class _RegistroState extends State<Registro> {
     }
   }
 
-  // Crear documento user_activity con estructura completa según especificaciones
   Future<void> _createUserActivityDocument(String userId) async {
     final activityDoc = FirebaseFirestore.instance.collection('user_activity').doc(userId);
     
@@ -154,13 +192,11 @@ class _RegistroState extends State<Registro> {
           'Insecta': 0,
         },
         'byTaxon': {
-          // Arachnida (5 órdenes)
           'Acari': 0,
           'Amblypygi': 0,
           'Araneae': 0,
           'Scorpiones': 0,
           'Solifugae': 0,
-          // Insecta (5 órdenes)
           'Dermaptera': 0,
           'Lepidoptera': 0,
           'Mantodea': 0,
@@ -199,14 +235,12 @@ class _RegistroState extends State<Registro> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Logo
                       Image.asset(
                         'assets/ic_logo_biodetect.png',
                         width: 120,
                         height: 120,
                       ),
                       const SizedBox(height: 24),
-                      // Campo: Nombre completo
                       TextFormField(
                         controller: _nombreController,
                         decoration: InputDecoration(
@@ -222,7 +256,6 @@ class _RegistroState extends State<Registro> {
                         style: const TextStyle(color: AppColors.textWhite),
                       ),
                       const SizedBox(height: 16),
-                      // Campo: Correo
                       TextFormField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
@@ -239,7 +272,6 @@ class _RegistroState extends State<Registro> {
                         style: const TextStyle(color: AppColors.textWhite),
                       ),
                       const SizedBox(height: 16),
-                      // Campo: Contraseña con ojo dinámico
                       TextFormField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
@@ -267,7 +299,6 @@ class _RegistroState extends State<Registro> {
                         ),
                         style: const TextStyle(color: AppColors.textWhite),
                       ),
-                      // Barra de fortaleza de contraseña
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Row(
@@ -287,7 +318,6 @@ class _RegistroState extends State<Registro> {
                           }),
                         ),
                       ),
-                      // Campo: Confirmar contraseña con ojo dinámico
                       TextFormField(
                         controller: _confirmController,
                         obscureText: _obscureConfirm,
@@ -315,7 +345,6 @@ class _RegistroState extends State<Registro> {
                         style: const TextStyle(color: AppColors.textWhite),
                       ),
                       const SizedBox(height: 16),
-                      // Checkbox Términos y condiciones
                       Row(
                         children: [
                           Checkbox(
@@ -357,19 +386,31 @@ class _RegistroState extends State<Registro> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      // Mensaje de error
                       if (_error != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(
-                              color: AppColors.warning,
-                              fontSize: 12,
-                            ),
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.warning, width: 1),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline, color: AppColors.warning, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _error!,
+                                  style: const TextStyle(
+                                    color: AppColors.textWhite,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      // Botón: Crear cuenta
                       SizedBox(
                         width: double.infinity,
                         height: 48,
@@ -396,7 +437,6 @@ class _RegistroState extends State<Registro> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      // Enlace a Login
                       GestureDetector(
                         onTap: () {
                           Navigator.pop(context);
