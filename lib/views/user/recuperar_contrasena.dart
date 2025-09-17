@@ -43,8 +43,8 @@ class _RecuperarContrasenaState extends State<RecuperarContrasena> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop(); // Cierra el diálogo
-                Navigator.of(context).pop(); // Vuelve al login
+                Navigator.of(context).pop();
+                Navigator.of(context).pop();
               },
               child: const Text('OK'),
             ),
@@ -97,14 +97,12 @@ class _RecuperarContrasenaState extends State<RecuperarContrasena> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Logo
                     Image.asset(
                       'assets/ic_logo_biodetect.png',
                       width: 150,
                       height: 150,
                     ),
                     const SizedBox(height: 16),
-                    // Título
                     const Text(
                       'Recuperar Contraseña',
                       style: TextStyle(
@@ -115,7 +113,6 @@ class _RecuperarContrasenaState extends State<RecuperarContrasena> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 16),
-                    // Instrucciones
                     const Text(
                       'Ingresa tu correo electrónico para recibir un enlace de restablecimiento.',
                       style: TextStyle(
@@ -125,7 +122,6 @@ class _RecuperarContrasenaState extends State<RecuperarContrasena> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 25),
-                    // Campo: Correo Electrónico
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
@@ -142,19 +138,31 @@ class _RecuperarContrasenaState extends State<RecuperarContrasena> {
                       style: const TextStyle(color: AppColors.textBlack),
                     ),
                     const SizedBox(height: 16),
-                    // Mensaje de error
                     if (_error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(
-                            color: AppColors.warning,
-                            fontSize: 12,
-                          ),
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.warning, width: 1),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline, color: AppColors.warning, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _error!,
+                                style: const TextStyle(
+                                  color: AppColors.textWhite,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    // Botón: Recuperar Contraseña
                     SizedBox(
                       width: double.infinity,
                       height: 60,
@@ -181,7 +189,6 @@ class _RecuperarContrasenaState extends State<RecuperarContrasena> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // Enlace: Volver a Iniciar Sesión
                     GestureDetector(
                       onTap: () {
                         Navigator.pop(context);
