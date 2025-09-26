@@ -80,9 +80,9 @@ class _RecuperarContrasenaState extends State<RecuperarContrasena> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary,
         padding: const EdgeInsets.all(16),
         child: Center(
           child: SingleChildScrollView(

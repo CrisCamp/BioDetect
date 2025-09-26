@@ -357,13 +357,11 @@ class _DetalleRegistroState extends State<DetalleRegistro> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.deepGreen,
+      backgroundColor: AppColors.backgroundPrimary,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
         width: double.infinity,
         height: double.infinity,
+        color: AppColors.backgroundPrimary,
         child: SafeArea(
           child: SingleChildScrollView(
             child: Padding(

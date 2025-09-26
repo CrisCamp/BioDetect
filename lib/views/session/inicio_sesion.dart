@@ -293,7 +293,7 @@ class _InicioSesionState extends State<InicioSesion> {
               _error = 'Para iniciar sesión con Google necesitas conexión a internet. Puedes mantener la sesión activa seleccionando "Recordar sesión".';
               break;
             default:
-              _error = 'Error al iniciar sesión con Google. Verifica tu conexión e intenta de nuevo.';
+              _error = 'Error al iniciar sesión con Google.';
           }
         });
       }
@@ -364,10 +364,11 @@ class _InicioSesionState extends State<InicioSesion> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.backgroundPrimary,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary,
         padding: const EdgeInsets.all(16),
         child: Stack(
           children: [
@@ -390,11 +391,19 @@ class _InicioSesionState extends State<InicioSesion> {
                         decoration: InputDecoration(
                           hintText: 'Correo',
                           filled: true,
-                          fillColor: AppColors.slateGreen,
-                          hintStyle: const TextStyle(color: AppColors.textWhite),
+                          fillColor: AppColors.inputBackground,
+                          hintStyle: const TextStyle(color: AppColors.inputHint),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorderFocused, width: 2.5),
                           ),
                         ),
                         style: const TextStyle(color: AppColors.textWhite),
@@ -406,16 +415,24 @@ class _InicioSesionState extends State<InicioSesion> {
                         decoration: InputDecoration(
                           hintText: 'Contraseña',
                           filled: true,
-                          fillColor: AppColors.slateGreen,
-                          hintStyle: const TextStyle(color: AppColors.textWhite),
+                          fillColor: AppColors.inputBackground,
+                          hintStyle: const TextStyle(color: AppColors.inputHint),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorderFocused, width: 2.5),
                           ),
                           suffixIcon: IconButton(
                             icon: Icon(
                               _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                              color: AppColors.textWhite.withValues(alpha: 0.7),
+                              color: AppColors.inputHint,
                             ),
                             onPressed: () {
                               setState(() {
@@ -436,32 +453,27 @@ class _InicioSesionState extends State<InicioSesion> {
                                 _remember = value ?? false;
                               });
                             },
-                            activeColor: AppColors.buttonGreen2,
-                            checkColor: AppColors.textBlack,
+                            activeColor: AppColors.buttonGreen1,
+                            checkColor: AppColors.textWhite,
+                            side: BorderSide(color: AppColors.inputBorder),
                           ),
                           const Text(
                             'Recordar sesión',
                             style: TextStyle(color: AppColors.textWhite),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: GestureDetector(
-                              onTap: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Mantiene tu sesión activa para no tener que iniciar sesión cada vez.',
-                                      style: TextStyle(color: AppColors.textWhite),
-                                    ),
-                                    backgroundColor: AppColors.slateGreen,
-                                    duration: Duration(seconds: 3),
-                                  ),
-                                );
-                              },
-                              child: Icon(
-                                Icons.info_outline,
-                                size: 16,
-                                color: AppColors.textWhite.withValues(alpha: 0.7),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const RecuperarContrasena()),
+                              );
+                            },
+                            child: const Text(
+                              '¿Olvidaste tu contraseña?',
+                              style: TextStyle(
+                                color: AppColors.textBlueNormal,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
@@ -492,39 +504,24 @@ class _InicioSesionState extends State<InicioSesion> {
                             ],
                           ),
                         ),
+                      const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
+                        height: 48,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.buttonGreen2,
-                            foregroundColor: AppColors.textBlack,
-                            minimumSize: const Size(0, 48),
+                            backgroundColor: AppColors.buttonGreen1,
+                            foregroundColor: AppColors.textWhite,
+                            textStyle: const TextStyle(fontWeight: FontWeight.bold),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
+                            elevation: 4,
                           ),
                           onPressed: _loading ? null : _onLogin,
                           child: const Text(
-                            'Iniciar sesión',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const RecuperarContrasena(),
-                            ),
-                          );
-                        },
-                        child: const Text(
-                          '¿Olvidaste tu contraseña?',
-                          style: TextStyle(
-                            color: AppColors.textWhite,
-                            fontWeight: FontWeight.bold,
+                            'Iniciar Sesión',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                         ),
                       ),
@@ -534,20 +531,23 @@ class _InicioSesionState extends State<InicioSesion> {
                           Expanded(
                             child: Container(
                               height: 1,
-                              color: AppColors.brownDark3,
+                              color: AppColors.borderColor.withOpacity(0.3),
                             ),
                           ),
                           const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            padding: EdgeInsets.symmetric(horizontal: 16),
                             child: Text(
                               'O',
-                              style: TextStyle(color: AppColors.textWhite),
+                              style: TextStyle(
+                                color: AppColors.textPaleGreen,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                           Expanded(
                             child: Container(
                               height: 1,
-                              color: AppColors.brownDark3,
+                              color: AppColors.borderColor.withOpacity(0.3),
                             ),
                           ),
                         ],
@@ -555,23 +555,25 @@ class _InicioSesionState extends State<InicioSesion> {
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
+                        height: 48,
                         child: ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.white,
-                            foregroundColor: AppColors.textBlack,
-                            minimumSize: const Size(0, 48),
+                            backgroundColor: AppColors.backgroundCardLight,
+                            foregroundColor: AppColors.textWhite,
+                            textStyle: const TextStyle(fontWeight: FontWeight.bold),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
+                              side: BorderSide(color: AppColors.inputBorder),
                             ),
+                            elevation: 2,
                           ),
                           icon: Image.asset(
                             'assets/ic_google.png',
-                            width: 24,
                             height: 24,
                           ),
                           label: const Text(
                             'Continuar con Google',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                           onPressed: _loading ? null : _onGoogleSignIn,
                         ),
@@ -581,15 +583,13 @@ class _InicioSesionState extends State<InicioSesion> {
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(
-                              builder: (context) => const Registro(),
-                            ),
+                            MaterialPageRoute(builder: (_) => const Registro()),
                           );
                         },
                         child: const Text(
                           '¿No tienes cuenta? Regístrate',
                           style: TextStyle(
-                            color: AppColors.textWhite,
+                            color: AppColors.textBlueNormal,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -604,7 +604,7 @@ class _InicioSesionState extends State<InicioSesion> {
                 color: Colors.black26,
                 child: const Center(
                   child: CircularProgressIndicator(
-                    color: AppColors.mintGreen,
+                    color: AppColors.buttonGreen1,
                   ),
                 ),
               ),

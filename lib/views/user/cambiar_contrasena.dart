@@ -107,9 +107,9 @@ class _CambiarContrasenaScreenState extends State<CambiarContrasenaScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
         child: Stack(
           children: [

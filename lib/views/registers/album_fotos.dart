@@ -5,7 +5,6 @@ import 'package:biodetect/views/registers/lista_registros.dart';
 import 'package:biodetect/views/registers/captura_foto.dart';
 import 'package:biodetect/views/registers/fotos_pendientes.dart';
 import 'package:biodetect/views/map/mapa.dart';
-import 'package:biodetect/services/pending_photos_service.dart';
 import 'package:biodetect/services/google_drive_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -24,14 +23,12 @@ class _AlbumFotosState extends State<AlbumFotos> {
   bool _isLoading = true;
   bool _hasInternet = true;
   Timer? _connectionCheckTimer; // Timer para verificación de conexión automática
-  int _pendingCount = 0; // Contador de fotos pendientes
   bool _isSyncing = false; // Estado de sincronización con Drive
 
   @override
   void initState() {
     super.initState();
     _loadPhotos();
-    _loadPendingCount();
     _checkInternetConnection();
     _startPeriodicConnectionCheck(); // Iniciar verificación automática
   }
@@ -79,16 +76,6 @@ class _AlbumFotosState extends State<AlbumFotos> {
         timer.cancel(); // Cancelar si el widget ya no está montado
       }
     });
-  }
-
-  Future<void> _loadPendingCount() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final count = await PendingPhotosService.getPendingCount(user.uid);
-      setState(() {
-        _pendingCount = count;
-      });
-    }
   }
 
   Future<void> _loadPhotos() async {
@@ -145,7 +132,7 @@ class _AlbumFotosState extends State<AlbumFotos> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
-            backgroundColor: _isConnectionError(e) ? AppColors.warning : AppColors.warningDark,
+            backgroundColor: _isConnectionError(e) ? AppColors.warning : AppColors.warning,
             duration: const Duration(seconds: 3),
           ),
         );
@@ -270,11 +257,6 @@ class _AlbumFotosState extends State<AlbumFotos> {
                 '• Editados después de sync: $outdatedPhotos',
                 style: const TextStyle(color: AppColors.warning),
               ),
-            // const SizedBox(height: 16),
-            // const Text(
-            //   'Selecciona una opción:',
-            //   style: TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold),
-            // ),
           ],
         ),
         actions: [
@@ -1016,19 +998,19 @@ class _AlbumFotosState extends State<AlbumFotos> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary, // Cambiar de gradiente a color sólido
         child: SafeArea(
           child: Column(
             children: [
+              // Header con indicador de conexión
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    // Título principal
                     const Text(
-                      'Mis hallazgos',
+                      'Mis hallazgos', // EL TEXTO ORIGINAL NO CAMBIA
                       style: TextStyle(
                         color: AppColors.white,
                         fontSize: 28,
@@ -1089,47 +1071,6 @@ class _AlbumFotosState extends State<AlbumFotos> {
                         
                         // Botones de acceso rápido
                         IconButton(
-                          icon: Stack(
-                            children: [
-                              const Icon(Icons.schedule_outlined),
-                              if (_pendingCount > 0)
-                                Positioned(
-                                  right: 0,
-                                  top: 0,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.warning,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: const Color.fromARGB(255, 255, 107, 107), width: 1),
-                                    ),
-                                    constraints: const BoxConstraints(
-                                      minWidth: 14,
-                                      minHeight: 12,
-                                    ),
-                                    child: Text(
-                                      _pendingCount > 9 ? '9+' : _pendingCount.toString(),
-                                      style: const TextStyle(
-                                        color: Color.fromARGB(255, 255, 255, 255),
-                                        fontSize: 8,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          color: AppColors.white,
-                          tooltip: 'Fotos Pendientes',
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const FotosPendientes()),
-                            ).then((_) => _loadPendingCount());
-                          },
-                        ),
-                        IconButton(
                           icon: const Icon(Icons.camera_alt_outlined),
                           color: AppColors.white,
                           tooltip: 'Capturar Foto',
@@ -1139,7 +1080,6 @@ class _AlbumFotosState extends State<AlbumFotos> {
                               MaterialPageRoute(builder: (context) => const CapturaFoto()),
                             ).then((_) {
                               _loadPhotos();
-                              _loadPendingCount();
                             });
                           },
                         ),

@@ -15,9 +15,9 @@ class BinnacleScreen extends StatelessWidget {
         backgroundColor: AppColors.backgroundNavBarsLigth,
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary,
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24),

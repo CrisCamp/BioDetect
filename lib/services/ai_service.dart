@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
 class AIService {
-  static const String _baseUrl = 'https://biodetect-203436983316.us-central1.run.app/';
+  static const String _baseUrl = 'https://biodetect-417004325627.us-central1.run.app/';
   
   static Future<Map<String, dynamic>> analyzeImage(File imageFile) async {
     try {

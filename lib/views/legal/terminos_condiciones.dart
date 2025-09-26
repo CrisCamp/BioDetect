@@ -1,4 +1,4 @@
- import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:biodetect/themes.dart';
 
 class TerminosCondiciones extends StatelessWidget {
@@ -17,9 +17,9 @@ class TerminosCondiciones extends StatelessWidget {
         elevation: 0,
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary,
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(

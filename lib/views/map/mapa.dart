@@ -472,9 +472,9 @@ class _MapaIterativoScreenState extends State<MapaIterativoScreen> {
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary,
         child: SafeArea(
           child: Column(
             children: [
@@ -485,30 +485,19 @@ class _MapaIterativoScreenState extends State<MapaIterativoScreen> {
                 child: Row(
                   children: [
                     IconButton(
+                      onPressed: () => Navigator.pop(context),
                       icon: const Icon(Icons.arrow_back_ios_new),
                       color: AppColors.textWhite,
-                      onPressed: () => Navigator.pop(context),
                     ),
                     Expanded(
-                      child: Column(
-                        children: [
-                          const Text(
-                            'Mapa Interactivo',
-                            style: TextStyle(
-                              color: AppColors.textWhite,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          Text(
-                            '${_userPhotos.length} registros en el mapa',
-                            style: const TextStyle(
-                              color: AppColors.textPaleGreen,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        'Mapa Interactivo',
+                        style: const TextStyle(
+                          color: AppColors.textWhite,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
                     IconButton(

@@ -326,9 +326,9 @@ class _ListaRegistrosState extends State<ListaRegistros> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary,
         child: SafeArea(
           child: Column(
             children: [

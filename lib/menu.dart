@@ -5,7 +5,6 @@ import 'package:biodetect/screens/profile_screen.dart';
 import 'package:biodetect/themes.dart';
 import 'package:flutter/material.dart';
 
-
 class MainMenu extends StatefulWidget {
   const MainMenu({super.key});
 
@@ -16,7 +15,7 @@ class MainMenu extends StatefulWidget {
 class _MainMenuState extends State<MainMenu> {
   int _currentIndex = 0;
   final List<Widget> _screens = [
-    const AlbumFotos(), // Cambiamos a AlbumFotos como principal
+    const AlbumFotos(),
     const ForumScreen(),
     const ExplorarBitacorasPublicasScreen(),
     const ProfileScreen(),
@@ -25,6 +24,7 @@ class _MainMenuState extends State<MainMenu> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.backgroundPrimary,
       body: _screens[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),

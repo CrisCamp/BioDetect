@@ -701,9 +701,9 @@ class _RegDatosState extends State<RegDatos> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary, // Cambiar de gradiente a color sólido
         child: SafeArea(
           child: SingleChildScrollView(
             child: Padding(

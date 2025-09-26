@@ -164,49 +164,43 @@ class _CrearEditarBitacoraScreenState extends State<CrearEditarBitacoraScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: AppColors.buttonGreen2,
+        foregroundColor: AppColors.white,
+        onPressed: _guardarBitacora,
+        child: const Icon(Icons.save),
+        tooltip: 'Guardar bitácora',
+      ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary,
         child: SafeArea(
           child: Column(
             children: [
               // Header
               Container(
                 color: AppColors.slateGreen,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 child: Row(
                   children: [
                     IconButton(
                       icon: const Icon(Icons.arrow_back_ios_new),
-                      color: AppColors.textWhite,
-                      onPressed: _isSaving ? null : () => Navigator.pop(context),
+                      color: AppColors.white,
+                      onPressed: () => Navigator.pop(context),
                     ),
                     Expanded(
                       child: Text(
-                        _isEditing ? 'Editar Bitácora' : 'Nueva Bitácora',
+                        widget.bitacoraData != null ? 'Editar Bitácora' : 'Nueva Bitácora',
                         style: const TextStyle(
-                          color: AppColors.textWhite,
-                          fontSize: 24,
+                          color: AppColors.white,
+                          fontSize: 22,
                           fontWeight: FontWeight.bold,
                         ),
                         textAlign: TextAlign.center,
                       ),
                     ),
-                    IconButton(
-                      icon: _isSaving 
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: AppColors.textWhite,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(Icons.save),
-                      color: AppColors.textWhite,
-                      onPressed: _isSaving ? null : _guardarBitacora,
-                    ),
+                    const SizedBox(width: 44),
                   ],
                 ),
               ),
@@ -225,27 +219,32 @@ class _CrearEditarBitacoraScreenState extends State<CrearEditarBitacoraScreen> {
                           enabled: !_isSaving,
                           decoration: InputDecoration(
                             labelText: 'Título de la bitácora',
-                            labelStyle: const TextStyle(color: AppColors.textPaleGreen),
+                            labelStyle: const TextStyle(color: AppColors.inputHint),
                             filled: true,
-                            fillColor: AppColors.textWhite,
+                            fillColor: AppColors.inputBackground,
                             enabledBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: AppColors.brownDark3),
+                              borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             focusedBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: AppColors.brownDark3, width: 2),
+                              borderSide: BorderSide(color: AppColors.inputBorderFocused, width: 2.5),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             errorBorder: OutlineInputBorder(
-                              borderSide: const BorderSide(color: AppColors.warning),
+                              borderSide: const BorderSide(color: AppColors.warning, width: 1.5),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             focusedErrorBorder: OutlineInputBorder(
-                              borderSide: const BorderSide(color: AppColors.warning, width: 2),
+                              borderSide: const BorderSide(color: AppColors.warning, width: 2.5),
                               borderRadius: BorderRadius.circular(12),
                             ),
+                            errorStyle: const TextStyle(
+                              color: AppColors.warning, // Color del texto de error
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
-                          style: const TextStyle(fontSize: 18, color: AppColors.textBlack),
+                          style: const TextStyle(fontSize: 18, color: AppColors.textWhite),
                           validator: (value) {
                             if (value == null || value.trim().isEmpty) {
                               return 'El título es obligatorio';
@@ -261,27 +260,32 @@ class _CrearEditarBitacoraScreenState extends State<CrearEditarBitacoraScreen> {
                           maxLines: 4,
                           decoration: InputDecoration(
                             labelText: 'Descripción',
-                            labelStyle: const TextStyle(color: AppColors.textPaleGreen),
+                            labelStyle: const TextStyle(color: AppColors.inputHint),
                             filled: true,
-                            fillColor: AppColors.textWhite,
+                            fillColor: AppColors.inputBackground,
                             enabledBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: AppColors.brownDark3),
+                              borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             focusedBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: AppColors.brownDark3, width: 2),
+                              borderSide: BorderSide(color: AppColors.inputBorderFocused, width: 2.5),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             errorBorder: OutlineInputBorder(
-                              borderSide: const BorderSide(color: AppColors.warning),
+                              borderSide: const BorderSide(color: AppColors.warning, width: 1.5),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             focusedErrorBorder: OutlineInputBorder(
-                              borderSide: const BorderSide(color: AppColors.warning, width: 2),
+                              borderSide: const BorderSide(color: AppColors.warning, width: 2.5),
                               borderRadius: BorderRadius.circular(12),
                             ),
+                            errorStyle: const TextStyle(
+                              color: AppColors.warning, // Color del texto de error
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
-                          style: const TextStyle(color: AppColors.textBlack),
+                          style: const TextStyle(color: AppColors.textWhite),
                           validator: (value) {
                             if (value == null || value.trim().isEmpty) {
                               return 'La descripción es obligatoria';
@@ -300,7 +304,10 @@ class _CrearEditarBitacoraScreenState extends State<CrearEditarBitacoraScreen> {
                                   _isPublic = value;
                                 });
                               },
-                              activeColor: AppColors.buttonGreen2,
+                              activeColor: AppColors.inputBorderFocused, // Color más brillante
+                              activeTrackColor: AppColors.inputBorder.withOpacity(0.6), // Track más visible
+                              inactiveThumbColor: AppColors.inputHint,
+                              inactiveTrackColor: AppColors.inputBackground.withOpacity(0.7),
                             ),
                             const SizedBox(width: 8),
                             const Expanded(
@@ -315,7 +322,7 @@ class _CrearEditarBitacoraScreenState extends State<CrearEditarBitacoraScreen> {
                           ],
                         ),
                         const SizedBox(height: 24),
-                        // Título de registros
+                        // Título de registros con botón mejorado
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -327,13 +334,36 @@ class _CrearEditarBitacoraScreenState extends State<CrearEditarBitacoraScreen> {
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            TextButton.icon(
-                              icon: const Icon(Icons.add_photo_alternate, color: AppColors.buttonBlue2),
-                              label: const Text(
-                                'Seleccionar',
-                                style: TextStyle(color: AppColors.buttonBlue2),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppColors.buttonSelect.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppColors.buttonSelect, width: 1.5),
                               ),
-                              onPressed: _isSaving ? null : _navigateToSelectPhotos,
+                              child: InkWell(
+                                onTap: _isSaving ? null : _navigateToSelectPhotos,
+                                borderRadius: BorderRadius.circular(8),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.add_photo_alternate,
+                                      color: AppColors.buttonSelect,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Seleccionar',
+                                      style: TextStyle(
+                                        color: AppColors.buttonSelect,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ],
                         ),

@@ -166,9 +166,9 @@ class _EditarPerfilState extends State<EditarPerfil> {
       body: AbsorbPointer(
         absorbing: !_hasInternet,
         child: Container(
-          decoration: const BoxDecoration(
-            gradient: AppColors.backgroundLightGradient,
-          ),
+          width: double.infinity,
+          height: double.infinity,
+          color: AppColors.backgroundPrimary,
           child: SafeArea(
             child: ListView(
               padding: const EdgeInsets.all(0),

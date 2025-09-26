@@ -434,9 +434,9 @@ class _FotosPendientesState extends State<FotosPendientes> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary,
         child: SafeArea(
           child: Column(
             children: [
@@ -458,26 +458,36 @@ class _FotosPendientesState extends State<FotosPendientes> {
                             'Fotos Pendientes',
                             style: TextStyle(
                               color: AppColors.textWhite,
-                              fontSize: 20,
+                              fontSize: 24,
                               fontWeight: FontWeight.bold,
                             ),
                             textAlign: TextAlign.center,
                           ),
                           // Indicador de conexión
                           Container(
-                            margin: const EdgeInsets.only(top: 4),
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: _hasInternet ? AppColors.buttonGreen2 : AppColors.warning,
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Text(
-                              _hasInternet ? 'En línea' : 'Sin conexión',
-                              style: const TextStyle(
-                                color: AppColors.textBlack,
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _hasInternet ? Icons.wifi : Icons.wifi_off,
+                                  color: AppColors.textBlack,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _hasInternet ? 'En línea' : 'Sin conexión',
+                                  style: const TextStyle(
+                                    color: AppColors.textBlack,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],

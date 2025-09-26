@@ -22,7 +22,7 @@ if (hasKeystore) {
 }
 
 android {
-    namespace = "com.example.biodetect"
+    namespace = "com.biodetect.mobile"
     compileSdk = 35
     ndkVersion = "27.0.12077973"
 
@@ -40,7 +40,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.biodetect"
+        applicationId = "com.biodetect.mobile"
         minSdk = 23
         targetSdk = 35
         versionCode = flutter.versionCode

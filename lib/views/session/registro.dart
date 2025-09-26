@@ -221,17 +221,18 @@ class _RegistroState extends State<Registro> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.backgroundPrimary,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Form(
-                  key: _formKey,
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary,
+        padding: const EdgeInsets.all(16),
+        child: Stack(
+          children: [
+            Center(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(0),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -241,37 +242,56 @@ class _RegistroState extends State<Registro> {
                         height: 120,
                       ),
                       const SizedBox(height: 24),
+                      // Campo Nombre - ACTUALIZADO con nuevos colores
                       TextFormField(
                         controller: _nombreController,
                         decoration: InputDecoration(
                           hintText: 'Nombre completo',
                           filled: true,
-                          fillColor: AppColors.slateGreen,
-                          hintStyle: const TextStyle(color: AppColors.textWhite),
+                          fillColor: AppColors.inputBackground,
+                          hintStyle: const TextStyle(color: AppColors.inputHint),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorderFocused, width: 2.5),
                           ),
                         ),
                         style: const TextStyle(color: AppColors.textWhite),
                       ),
                       const SizedBox(height: 16),
+                      // Campo Email - ACTUALIZADO con nuevos colores
                       TextFormField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
                         decoration: InputDecoration(
                           hintText: 'Correo',
                           filled: true,
-                          fillColor: AppColors.slateGreen,
-                          hintStyle: const TextStyle(color: AppColors.textWhite),
+                          fillColor: AppColors.inputBackground,
+                          hintStyle: const TextStyle(color: AppColors.inputHint),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorderFocused, width: 2.5),
                           ),
                         ),
                         style: const TextStyle(color: AppColors.textWhite),
                       ),
                       const SizedBox(height: 16),
+                      // Campo Contraseña - ACTUALIZADO con nuevos colores
                       TextFormField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
@@ -279,16 +299,24 @@ class _RegistroState extends State<Registro> {
                         decoration: InputDecoration(
                           hintText: 'Contraseña',
                           filled: true,
-                          fillColor: AppColors.slateGreen,
-                          hintStyle: const TextStyle(color: AppColors.textWhite),
+                          fillColor: AppColors.inputBackground,
+                          hintStyle: const TextStyle(color: AppColors.inputHint),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorderFocused, width: 2.5),
                           ),
                           suffixIcon: IconButton(
                             icon: Icon(
                               _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                              color: AppColors.textWhite.withValues(alpha: 0.7),
+                              color: AppColors.inputHint,
                             ),
                             onPressed: () {
                               setState(() {
@@ -299,6 +327,7 @@ class _RegistroState extends State<Registro> {
                         ),
                         style: const TextStyle(color: AppColors.textWhite),
                       ),
+                      // Indicador de fortaleza de contraseña - COLORES ACTUALIZADOS
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Row(
@@ -309,7 +338,7 @@ class _RegistroState extends State<Registro> {
                                 margin: EdgeInsets.symmetric(horizontal: i == 1 || i == 3 ? 2 : 0),
                                 decoration: BoxDecoration(
                                   color: i < _passwordStrength
-                                      ? AppColors.mintGreen
+                                      ? AppColors.inputBorderFocused
                                       : AppColors.slateGrey,
                                   borderRadius: BorderRadius.circular(2),
                                 ),
@@ -318,22 +347,31 @@ class _RegistroState extends State<Registro> {
                           }),
                         ),
                       ),
+                      // Campo Confirmar Contraseña - ACTUALIZADO con nuevos colores
                       TextFormField(
                         controller: _confirmController,
                         obscureText: _obscureConfirm,
                         decoration: InputDecoration(
                           hintText: 'Confirmar contraseña',
                           filled: true,
-                          fillColor: AppColors.slateGreen,
-                          hintStyle: const TextStyle(color: AppColors.textWhite),
+                          fillColor: AppColors.inputBackground,
+                          hintStyle: const TextStyle(color: AppColors.inputHint),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorderFocused, width: 2.5),
                           ),
                           suffixIcon: IconButton(
                             icon: Icon(
                               _obscureConfirm ? Icons.visibility_off : Icons.visibility,
-                              color: AppColors.textWhite.withValues(alpha: 0.7),
+                              color: AppColors.inputHint,
                             ),
                             onPressed: () {
                               setState(() {
@@ -345,6 +383,7 @@ class _RegistroState extends State<Registro> {
                         style: const TextStyle(color: AppColors.textWhite),
                       ),
                       const SizedBox(height: 16),
+                      // Checkbox de términos - COLORES ACTUALIZADOS
                       Row(
                         children: [
                           Checkbox(
@@ -354,11 +393,13 @@ class _RegistroState extends State<Registro> {
                                 _aceptaTerminos = value ?? false;
                               });
                             },
-                            activeColor: AppColors.buttonGreen2,
+                            activeColor: AppColors.buttonGreen1,
+                            checkColor: AppColors.textWhite,
+                            side: BorderSide(color: AppColors.inputBorder),
                           ),
                           const Text(
                             'Acepto los ',
-                            style: TextStyle(color: AppColors.textBlack),
+                            style: TextStyle(color: AppColors.textWhite),
                           ),
                           GestureDetector(
                             onTap: () async {
@@ -379,13 +420,13 @@ class _RegistroState extends State<Registro> {
                               style: TextStyle(
                                 color: AppColors.textBlueNormal,
                                 fontWeight: FontWeight.bold,
-                                decoration: TextDecoration.underline,
                               ),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 8),
+                      // Mensaje de error
                       if (_error != null)
                         Container(
                           margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
@@ -411,17 +452,19 @@ class _RegistroState extends State<Registro> {
                             ],
                           ),
                         ),
+                      // Botón Crear cuenta - COLORES ACTUALIZADOS
                       SizedBox(
                         width: double.infinity,
                         height: 48,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.buttonGreen2,
-                            foregroundColor: AppColors.textBlack,
+                            backgroundColor: AppColors.buttonGreen1,
+                            foregroundColor: AppColors.textWhite,
                             textStyle: const TextStyle(fontWeight: FontWeight.bold),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
+                            elevation: 4,
                           ),
                           onPressed: _loading ? null : _onRegistrar,
                           child: _loading
@@ -429,14 +472,18 @@ class _RegistroState extends State<Registro> {
                             width: 24,
                             height: 24,
                             child: CircularProgressIndicator(
-                              color: AppColors.textBlack,
+                              color: AppColors.textWhite,
                               strokeWidth: 2,
                             ),
                           )
-                              : const Text('Crear cuenta'),
+                              : const Text(
+                                  'Crear cuenta',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
                         ),
                       ),
                       const SizedBox(height: 24),
+                      // Enlace de regreso - COLOR ACTUALIZADO
                       GestureDetector(
                         onTap: () {
                           Navigator.pop(context);
@@ -444,7 +491,7 @@ class _RegistroState extends State<Registro> {
                         child: const Text(
                           '¿Ya tienes cuenta? Inicia sesión',
                           style: TextStyle(
-                            color: AppColors.textWhite,
+                            color: AppColors.textBlueNormal,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -454,7 +501,17 @@ class _RegistroState extends State<Registro> {
                 ),
               ),
             ),
-          ),
+            // Loading overlay
+            if (_loading)
+              Container(
+                color: Colors.black26,
+                child: const Center(
+                  child: CircularProgressIndicator(
+                    color: AppColors.buttonGreen1,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

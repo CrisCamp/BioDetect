@@ -425,9 +425,9 @@ class _GaleriaInsigniasScreenState extends State<GaleriaInsigniasScreen> {
       },
       child: Scaffold(
         body: Container(
-          decoration: const BoxDecoration(
-            gradient: AppColors.backgroundLightGradient,
-          ),
+          width: double.infinity,
+          height: double.infinity,
+          color: AppColors.backgroundPrimary, // Cambiar de gradiente a color sólido
           child: SafeArea(
             child: Column(
               children: [

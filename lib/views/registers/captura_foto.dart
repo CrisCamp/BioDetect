@@ -11,7 +11,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:flutter/foundation.dart'; // Para kDebugMode
+import 'package:flutter/foundation.dart';
 import 'package:crop_your_image/crop_your_image.dart';
 
 class CapturaFoto extends StatefulWidget {
@@ -524,9 +524,9 @@ class _CapturaFotoState extends State<CapturaFoto> {
       children: [
         Scaffold(
           body: Container(
-            decoration: const BoxDecoration(
-              gradient: AppColors.backgroundLightGradient,
-            ),
+            width: double.infinity,
+            height: double.infinity,
+            color: AppColors.backgroundPrimary,
             child: SafeArea(
               child: SingleChildScrollView(
                 child: ConstrainedBox(

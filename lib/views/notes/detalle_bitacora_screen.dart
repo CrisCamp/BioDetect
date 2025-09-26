@@ -184,7 +184,7 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
     final isPublic = widget.bitacoraData['isPublic'] ?? false;
 
     return Scaffold(
-      backgroundColor: AppColors.deepGreen,
+      backgroundColor: AppColors.backgroundPrimary, // Cambiar de AppColors.deepGreen
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
@@ -228,9 +228,9 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary, // Cambiar de decoration con backgroundColor
         child: Stack(
           children: [
             // Contenido principal con padding superior para el header flotante
@@ -547,35 +547,35 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 child: CachedNetworkImage(
                   imageUrl: registro['imageUrl'] ?? '',
-                height: 220,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Container(
-                  height: 220,
-                  color: AppColors.paleGreen.withValues(alpha: 0.3),
-                  child: const Center(
-                    child: CircularProgressIndicator(
-                      color: AppColors.buttonGreen2,
+                  height: 220, // Agregué la coma que faltaba aquí
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    height: 220,
+                    color: AppColors.paleGreen.withValues(alpha: 0.3),
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.buttonGreen2,
+                      ),
+                    ),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    height: 220,
+                    color: AppColors.paleGreen.withValues(alpha: 0.3),
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.error_outline, color: AppColors.warning, size: 50),
+                        SizedBox(height: 8),
+                        Text(
+                          'Error al cargar imagen',
+                          style: TextStyle(color: AppColors.textPaleGreen),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                errorWidget: (context, url, error) => Container(
-                  height: 220,
-                  color: AppColors.paleGreen.withValues(alpha: 0.3),
-                  child: const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.error_outline, color: AppColors.warning, size: 50),
-                      SizedBox(height: 8),
-                      Text(
-                        'Error al cargar imagen',
-                        style: TextStyle(color: AppColors.textPaleGreen),
-                      ),
-                    ],
-                  ),
-                ),
               ),
-            ),
             ),
             const SizedBox(height: 16),
             // Información del registro
@@ -585,8 +585,9 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
             _buildInfoRow('Fecha:', _formatDate(registro['lastModifiedAt'])),
             _buildInfoRow('Coordenadas:', _formatCoords()),
             
-            if ((registro['details'] ?? '').toString().isNotEmpty) ...[
+            if ((registro['details'] ?? '').toString().isNotEmpty) 
               const SizedBox(height: 12),
+            if ((registro['details'] ?? '').toString().isNotEmpty) 
               const Text(
                 'Detalles:',
                 style: TextStyle(
@@ -595,7 +596,9 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
                   fontSize: 16,
                 ),
               ),
+            if ((registro['details'] ?? '').toString().isNotEmpty) 
               const SizedBox(height: 4),
+            if ((registro['details'] ?? '').toString().isNotEmpty) 
               Text(
                 registro['details'] ?? '',
                 style: const TextStyle(
@@ -603,10 +606,10 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
                   fontSize: 14,
                 ),
               ),
-            ],
             
-            if ((registro['notes'] ?? '').toString().isNotEmpty) ...[
+            if ((registro['notes'] ?? '').toString().isNotEmpty) 
               const SizedBox(height: 12),
+            if ((registro['notes'] ?? '').toString().isNotEmpty) 
               const Text(
                 'Observaciones:',
                 style: TextStyle(
@@ -615,7 +618,9 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
                   fontSize: 16,
                 ),
               ),
+            if ((registro['notes'] ?? '').toString().isNotEmpty) 
               const SizedBox(height: 4),
+            if ((registro['notes'] ?? '').toString().isNotEmpty) 
               Text(
                 registro['notes'] ?? '',
                 style: const TextStyle(
@@ -623,7 +628,6 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
                   fontSize: 14,
                 ),
               ),
-            ],
           ],
         ),
       ),
