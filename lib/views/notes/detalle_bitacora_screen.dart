@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:biodetect/themes.dart';
 import 'package:biodetect/services/bitacora_service.dart';
 import 'package:biodetect/services/pdf_service.dart';
+import 'package:biodetect/views/notes/bitacora_map_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -176,6 +177,19 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
     }
   }
 
+  void _abrirMapaBitacora() {
+    final titulo = widget.bitacoraData['title'] ?? 'Sin título';
+    
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => BitacoraMapScreen(
+          registros: _registros,
+          bitacoraTitle: titulo,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final titulo = widget.bitacoraData['title'] ?? 'Sin título';
@@ -188,6 +202,16 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          // Botón de mapa
+          FloatingActionButton(
+            backgroundColor: AppColors.buttonGreen2,
+            foregroundColor: AppColors.textBlack,
+            heroTag: "map_bitacora",
+            onPressed: (_isGeneratingPdf || _isSharing) ? null : _abrirMapaBitacora,
+            tooltip: 'Ver en mapa',
+            child: const Icon(Icons.map_outlined),
+          ),
+          const SizedBox(width: 16),
           // Botón de guardar directo
           FloatingActionButton(
             backgroundColor: AppColors.buttonBlue1,

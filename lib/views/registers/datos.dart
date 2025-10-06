@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:biodetect/views/badges/galeria_insignias.dart';
 import 'package:biodetect/services/google_drive_service.dart';
+import 'package:biodetect/views/location/location_picker_screen.dart';
 
 class RegDatos extends StatefulWidget {
   final File? imageFile;
@@ -572,6 +573,62 @@ class _RegDatosState extends State<RegDatos> {
     }
   }
 
+  Future<void> _openLocationPicker() async {
+    if (_isProcessing) return;
+
+    try {
+      // Obtener coordenadas actuales de los campos de texto
+      double? currentLat;
+      double? currentLon;
+
+      if (_latitudController.text.isNotEmpty) {
+        currentLat = double.tryParse(_latitudController.text);
+      }
+      if (_longitudController.text.isNotEmpty) {
+        currentLon = double.tryParse(_longitudController.text);
+      }
+
+      // Abrir el selector de ubicación
+      final result = await Navigator.of(context).push<Map<String, double>>(
+        MaterialPageRoute(
+          builder: (context) => LocationPickerScreen(
+            initialLatitude: currentLat,
+            initialLongitude: currentLon,
+            taxonOrder: taxonOrder.isNotEmpty ? taxonOrder : widget.ordenTaxonomico, // Pasar el orden taxonómico
+          ),
+        ),
+      );
+
+      // Si el usuario seleccionó una ubicación, actualizar los campos
+      if (result != null && result.containsKey('latitude') && result.containsKey('longitude')) {
+        setState(() {
+          lat = result['latitude']!;
+          lon = result['longitude']!;
+          _latitudController.text = lat.toStringAsFixed(6);
+          _longitudController.text = lon.toStringAsFixed(6);
+        });
+
+        // Mostrar confirmación
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ubicación seleccionada desde el mapa'),
+            backgroundColor: AppColors.buttonGreen2,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al abrir el mapa: $e'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+    }
+  }
+
   String? _validateLatitud(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'La latitud es requerida';
@@ -886,38 +943,61 @@ class _RegDatosState extends State<RegDatos> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
+                                      // Header de coordenadas
                                       Row(
                                         children: [
-                                          const Icon(Icons.location_on, color: AppColors.buttonGreen2),
+                                          const Icon(Icons.location_on, color: AppColors.buttonGreen2, size: 20),
                                           const SizedBox(width: 8),
-                                          const Text(
-                                            'Coordenadas GPS',
-                                            style: TextStyle(
-                                              color: AppColors.textWhite,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
+                                          const Expanded(
+                                            child: Text(
+                                              'Ubicación',
+                                              style: TextStyle(
+                                                color: AppColors.textWhite,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
                                           ),
-                                          const Spacer(),
-                                          // Botón de ubicación solo con icono
+                                          // Botón de mapa más compacto
                                           Container(
+                                            margin: const EdgeInsets.only(right: 4),
+                                            width: 36,
+                                            height: 36,
+                                            decoration: BoxDecoration(
+                                              color: AppColors.buttonBrown2,
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: IconButton(
+                                              icon: const Icon(Icons.map, size: 18),
+                                              color: AppColors.textBlack,
+                                              onPressed: _isProcessing ? null : _openLocationPicker,
+                                              tooltip: 'Mapa',
+                                              padding: EdgeInsets.zero,
+                                            ),
+                                          ),
+                                          // Botón de ubicación actual más compacto
+                                          Container(
+                                            width: 36,
+                                            height: 36,
                                             decoration: BoxDecoration(
                                               color: AppColors.buttonGreen2,
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius: BorderRadius.circular(6),
                                             ),
                                             child: IconButton(
                                               icon: _isGettingLocation
                                                   ? const SizedBox(
-                                                      width: 20,
-                                                      height: 20,
+                                                      width: 16,
+                                                      height: 16,
                                                       child: CircularProgressIndicator(
                                                         color: AppColors.textBlack,
                                                         strokeWidth: 2,
                                                       ),
                                                     )
-                                                  : const Icon(Icons.my_location, color: AppColors.textBlack),
+                                                  : const Icon(Icons.my_location, size: 18),
+                                              color: AppColors.textBlack,
                                               onPressed: (_isProcessing || _isGettingLocation) ? null : _getCurrentLocation,
-                                              tooltip: 'Obtener ubicación actual',
+                                              tooltip: 'Ubicación actual',
+                                              padding: EdgeInsets.zero,
                                             ),
                                           ),
                                         ],
