@@ -255,7 +255,21 @@ class PdfService {
                       _buildInfoRow('Orden:', registro['taxonOrder'] ?? 'No especificado', fontData, fontBold),
                       _buildInfoRow('Clase:', registro['class'] ?? 'No especificada', fontData, fontBold),
                       _buildInfoRow('Hábitat:', registro['habitat'] ?? 'No especificado', fontData, fontBold),
-                      _buildInfoRow('Coordenadas:', _formatCoords(registro), fontData, fontBold),
+                      // Coordenadas con enlace a Google Maps
+                      () {
+                        final coordsData = _getCoordsWithGoogleMapsUrl(registro);
+                        if (coordsData != null) {
+                          return _buildInfoRowWithLink(
+                            'Coordenadas:', 
+                            coordsData['displayText']!, 
+                            coordsData['url']!, 
+                            fontData, 
+                            fontBold
+                          );
+                        } else {
+                          return _buildInfoRow('Coordenadas:', 'Sin coordenadas', fontData, fontBold);
+                        }
+                      }(),
                     ],
                   ),
                 ),
@@ -386,6 +400,63 @@ class PdfService {
     );
   }
 
+  // Método especial para construir fila con enlace clickeable
+  static pw.Widget _buildInfoRowWithLink(String label, String displayText, String url, pw.Font fontData, pw.Font fontBold) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 6),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: 100,
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(
+                font: fontBold,
+                fontSize: 12,
+                color: PdfColors.black,
+              ),
+            ),
+          ),
+          pw.Expanded(
+            child: pw.UrlLink(
+              destination: url,
+              child: pw.Text(
+                displayText,
+                style: pw.TextStyle(
+                  font: fontData,
+                  fontSize: 12,
+                  color: PdfColors.blue,
+                  decoration: pw.TextDecoration.underline,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Método para obtener coordenadas con URL de Google Maps
+  static Map<String, String>? _getCoordsWithGoogleMapsUrl(Map<String, dynamic> registro) {
+    if (registro['coords'] == null) return null;
+    
+    final lat = registro['coords']['x'];
+    final lon = registro['coords']['y'];
+    
+    if (lat == null || lon == null || (lat == 0 && lon == 0)) {
+      return null;
+    }
+    
+    final displayText = '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
+    final googleMapsUrl = 'https://maps.google.com/maps?q=${lat.toStringAsFixed(6)},${lon.toStringAsFixed(6)}';
+    
+    return {
+      'displayText': displayText,
+      'url': googleMapsUrl,
+    };
+  }
+
   static String _formatDate(dynamic date) {
     if (date == null) return 'Sin fecha';
     
@@ -395,19 +466,6 @@ class PdfService {
     } catch (e) {
       return 'Sin fecha';
     }
-  }
-
-  static String _formatCoords(Map<String, dynamic> registro) {
-    if (registro['coords'] == null) return 'Sin coordenadas';
-    
-    final lat = registro['coords']['x'];
-    final lon = registro['coords']['y'];
-    
-    if (lat == null || lon == null || (lat == 0 && lon == 0)) {
-      return 'Sin coordenadas';
-    }
-    
-    return '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
   }
 
   static Future<void> previewPdf(Uint8List pdfBytes, String fileName) async {
