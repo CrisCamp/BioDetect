@@ -142,11 +142,22 @@ class _DetalleRegistroState extends State<DetalleRegistro> {
       lon = registro['coords']['y'];
     }
     
+    // Verificar la visibilidad de la ubicación
+    final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+    final isPublic = locationVisibility == 'Pública';
+    
+    String coordsText;
     if (lat == null || lon == null || (lat == 0 && lon == 0)) {
-      return 'Coordenadas: No disponibles';
+      coordsText = 'No disponibles';
+    } else {
+      coordsText = '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
     }
     
-    return 'Coordenadas: ${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
+    // Agregar información de visibilidad
+    final visibilityText = isPublic ? 'Pública' : 'Privada';
+    final visibilityIcon = isPublic ? '🌍' : '🔒';
+    
+    return 'Coordenadas: $coordsText\nVisibilidad: $visibilityIcon $visibilityText';
   }
 
   String _formatDate(Map<String, dynamic> registro) {
@@ -794,6 +805,8 @@ class FullScreenImageViewer extends StatelessWidget {
       
       // Formatear coordenadas
       String coordenadas = 'No disponibles';
+      final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+      
       if (registro['coords'] != null) {
         final lat = registro['coords']['x'];
         final lon = registro['coords']['y'];
@@ -847,6 +860,7 @@ Detalles: ${registro['details'] ?? 'Sin detalles'}
 Notas: ${registro['notes'] ?? 'Sin notas'}
 
 === INFORMACIÓN GEOGRÁFICA ===
+Visibilidad de ubicación: $locationVisibility
 Coordenadas: $coordenadas
 
 === FECHAS ===

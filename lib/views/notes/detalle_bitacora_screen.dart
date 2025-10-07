@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:firebase_auth/firebase_auth.dart';
 
 class DetalleBitacoraScreen extends StatefulWidget {
   final Map<String, dynamic> bitacoraData;
@@ -33,6 +34,156 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  // Verificar si el usuario actual es el propietario de la bitácora
+  bool _isCurrentUserOwner() {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return false;
+    
+    // Verificar por UID del usuario actual vs el authorId de la bitácora
+    final authorId = widget.bitacoraData['authorId'];
+    if (authorId != null) {
+      return currentUser.uid == authorId;
+    }
+    
+    // Verificar por email si no hay authorId
+    final authorEmail = widget.bitacoraData['authorEmail'];
+    if (authorEmail != null) {
+      return currentUser.email == authorEmail;
+    }
+    
+    // Como alternativa, verificar por nombre del autor si coincide con el display name
+    if (currentUser.displayName != null && currentUser.displayName!.isNotEmpty) {
+      return currentUser.displayName == _authorName;
+    }
+    
+    return false;
+  }
+
+  // Verificar si hay registros con ubicación privada
+  bool _hasPrivateLocationRegistros() {
+    return _registros.any((registro) {
+      final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+      return locationVisibility == 'Privada';
+    });
+  }
+
+  // Mostrar diálogo para elegir opciones de PDF
+  Future<String?> _showPdfOptionsDialog(String action) async {
+    return showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.backgroundCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            'Opciones de ubicación',
+            style: const TextStyle(
+              color: AppColors.textWhite,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Tu bitácora contiene registros con ubicación privada. ¿Cómo deseas ${action.toLowerCase()} el PDF?',
+                style: const TextStyle(
+                  color: AppColors.textPaleGreen,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Opción 1: Respetar ajustes
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.buttonGreen2, width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  leading: const Icon(
+                    Icons.settings,
+                    color: AppColors.buttonGreen2,
+                    size: 20,
+                  ),
+                  title: const Text(
+                    'Respetar ajustes de privacidad',
+                    style: TextStyle(
+                      color: AppColors.textWhite,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Solo incluir coordenadas de registros públicos',
+                    style: TextStyle(
+                      color: AppColors.textPaleGreen,
+                      fontSize: 12,
+                    ),
+                  ),
+                  onTap: () => Navigator.of(context).pop('respetar'),
+                ),
+              ),
+              
+              const SizedBox(height: 12),
+              
+              // Opción 2: Todas las ubicaciones públicas
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.warning, width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  leading: const Icon(
+                    Icons.public,
+                    color: AppColors.warning,
+                    size: 20,
+                  ),
+                  title: const Text(
+                    'Hacer todas las ubicaciones públicas',
+                    style: TextStyle(
+                      color: AppColors.textWhite,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Incluir coordenadas de todos los registros',
+                    style: TextStyle(
+                      color: AppColors.textPaleGreen,
+                      fontSize: 12,
+                    ),
+                  ),
+                  onTap: () => Navigator.of(context).pop('publicas'),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(
+                  color: AppColors.textPaleGreen,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _loadData() async {
@@ -91,15 +242,40 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
       return;
     }
 
+    // Verificar si es el propietario y tiene registros privados
+    // Solo mostrar diálogo si es el propietario y hay registros con ubicación privada
+    String? opcionSeleccionada;
+    if (_isCurrentUserOwner() && _hasPrivateLocationRegistros()) {
+      opcionSeleccionada = await _showPdfOptionsDialog('Guardar');
+      if (opcionSeleccionada == null) {
+        // Usuario canceló el diálogo
+        return;
+      }
+    }
+
     setState(() => _isGeneratingPdf = true);
 
     try {
       final titulo = widget.bitacoraData['title'] ?? 'Sin título';
       final fileName = 'Bitacora_${titulo.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}';
       
+      // Determinar qué registros usar según la opción seleccionada
+      List<Map<String, dynamic>> registrosParaPdf;
+      if (opcionSeleccionada == 'publicas') {
+        // Crear una copia de los registros con todas las ubicaciones como públicas
+        registrosParaPdf = _registros.map((registro) {
+          final registroCopia = Map<String, dynamic>.from(registro);
+          registroCopia['locationVisibility'] = 'Pública';
+          return registroCopia;
+        }).toList();
+      } else {
+        // Usar registros originales (respetando ajustes de privacidad)
+        registrosParaPdf = _registros;
+      }
+      
       final pdfBytes = await PdfService.generateBitacoraPdf(
         bitacoraData: widget.bitacoraData,
-        registros: _registros,
+        registros: registrosParaPdf,
         authorName: _authorName,
       );
 
@@ -149,15 +325,40 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
       return;
     }
 
+    // Verificar si es el propietario y tiene registros privados
+    // Solo mostrar diálogo si es el propietario y hay registros con ubicación privada
+    String? opcionSeleccionada;
+    if (_isCurrentUserOwner() && _hasPrivateLocationRegistros()) {
+      opcionSeleccionada = await _showPdfOptionsDialog('Compartir');
+      if (opcionSeleccionada == null) {
+        // Usuario canceló el diálogo
+        return;
+      }
+    }
+
     setState(() => _isSharing = true);
 
     try {
       final titulo = widget.bitacoraData['title'] ?? 'Sin título';
       final fileName = 'Bitacora_${titulo.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}';
       
+      // Determinar qué registros usar según la opción seleccionada
+      List<Map<String, dynamic>> registrosParaPdf;
+      if (opcionSeleccionada == 'publicas') {
+        // Crear una copia de los registros con todas las ubicaciones como públicas
+        registrosParaPdf = _registros.map((registro) {
+          final registroCopia = Map<String, dynamic>.from(registro);
+          registroCopia['locationVisibility'] = 'Pública';
+          return registroCopia;
+        }).toList();
+      } else {
+        // Usar registros originales (respetando ajustes de privacidad)
+        registrosParaPdf = _registros;
+      }
+      
       final pdfBytes = await PdfService.generateBitacoraPdf(
         bitacoraData: widget.bitacoraData,
-        registros: _registros,
+        registros: registrosParaPdf,
         authorName: _authorName,
       );
 
@@ -177,13 +378,75 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
     }
   }
 
+  // Método para obtener registros para el mapa según si es propietario o no
+  List<Map<String, dynamic>> _getRegistrosParaMapa() {
+    if (_isCurrentUserOwner()) {
+      // Si es el propietario, devolver todos los registros con coordenadas válidas
+      return _registros.where((registro) {
+        if (registro['coords'] == null) return false;
+        
+        final lat = registro['coords']['x'];
+        final lon = registro['coords']['y'];
+        
+        return lat != null && lon != null && (lat != 0 || lon != 0);
+      }).toList();
+    } else {
+      // Si no es el propietario, solo registros públicos (comportamiento anterior)
+      return _getRegistrosConUbicacionPublica();
+    }
+  }
+
+  // Método para obtener solo los registros con ubicación pública
+  List<Map<String, dynamic>> _getRegistrosConUbicacionPublica() {
+    return _registros.where((registro) {
+      final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+      final isPublic = locationVisibility == 'Pública';
+      
+      // Verificar que además tenga coordenadas válidas
+      if (!isPublic) return false;
+      
+      if (registro['coords'] == null) return false;
+      
+      final lat = registro['coords']['x'];
+      final lon = registro['coords']['y'];
+      
+      return lat != null && lon != null && (lat != 0 || lon != 0);
+    }).toList();
+  }
+
   void _abrirMapaBitacora() {
     final titulo = widget.bitacoraData['title'] ?? 'Sin título';
+    final registrosParaMapa = _getRegistrosParaMapa();
+    
+    // Mostrar mensaje informativo si es bitácora propia
+    if (_isCurrentUserOwner()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.info_outline, color: AppColors.textBlack, size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Bitácora propia: mostrando todas las ubicaciones',
+                  style: TextStyle(
+                    color: AppColors.textBlack,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.buttonGreen2,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
     
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => BitacoraMapScreen(
-          registros: _registros,
+          registros: registrosParaMapa,
           bitacoraTitle: titulo,
         ),
       ),
@@ -196,22 +459,29 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
     final descripcion = widget.bitacoraData['description'] ?? 'Sin descripción';
     final fechaCreacion = _formatDate(widget.bitacoraData['createdAt']);
     final isPublic = widget.bitacoraData['isPublic'] ?? false;
+    
+    // Verificar si mostrar el botón del mapa
+    final isOwner = _isCurrentUserOwner();
+    final registrosParaMapa = _getRegistrosParaMapa();
+    final mostrarBotonMapa = isOwner || registrosParaMapa.isNotEmpty;
 
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary, // Cambiar de AppColors.deepGreen
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // Botón de mapa
-          FloatingActionButton(
-            backgroundColor: AppColors.buttonGreen2,
-            foregroundColor: AppColors.textBlack,
-            heroTag: "map_bitacora",
-            onPressed: (_isGeneratingPdf || _isSharing) ? null : _abrirMapaBitacora,
-            tooltip: 'Ver en mapa',
-            child: const Icon(Icons.map_outlined),
-          ),
-          const SizedBox(width: 16),
+          // Botón de mapa - mostrar si es propietario O si hay registros públicos
+          if (mostrarBotonMapa) ...[
+            FloatingActionButton(
+              backgroundColor: AppColors.buttonGreen2,
+              foregroundColor: AppColors.textBlack,
+              heroTag: "map_bitacora",
+              onPressed: (_isGeneratingPdf || _isSharing) ? null : _abrirMapaBitacora,
+              tooltip: isOwner ? 'Ver en mapa (todas las ubicaciones)' : 'Ver en mapa',
+              child: const Icon(Icons.map_outlined),
+            ),
+            const SizedBox(width: 16),
+          ],
           // Botón de guardar directo
           FloatingActionButton(
             backgroundColor: AppColors.buttonBlue1,
@@ -537,17 +807,83 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
     }
   }
 
-  String _formatCoords() {
-    if (registro['coords'] == null) return 'Sin coordenadas';
+  Widget _buildCoordsRow() {
+    // Verificar la visibilidad de la ubicación - por defecto privada si no existe
+    final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+    final isPublic = locationVisibility == 'Pública';
     
-    final lat = registro['coords']['x'];
-    final lon = registro['coords']['y'];
+    String coordsText;
+    Color iconColor;
+    IconData iconData;
     
-    if (lat == null || lon == null || (lat == 0 && lon == 0)) {
-      return 'Sin coordenadas';
+    if (!isPublic) {
+      coordsText = 'No disponible';
+      iconColor = AppColors.warning;
+      iconData = Icons.lock;
+    } else {
+      // Si es pública, verificar si hay coordenadas válidas
+      if (registro['coords'] == null) {
+        coordsText = 'Sin coordenadas';
+        iconColor = AppColors.textPaleGreen;
+        iconData = Icons.location_off;
+      } else {
+        final lat = registro['coords']['x'];
+        final lon = registro['coords']['y'];
+        
+        if (lat == null || lon == null || (lat == 0 && lon == 0)) {
+          coordsText = 'Sin coordenadas';
+          iconColor = AppColors.textPaleGreen;
+          iconData = Icons.location_off;
+        } else {
+          coordsText = '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
+          iconColor = AppColors.buttonGreen2;
+          iconData = Icons.public;
+        }
+      }
     }
     
-    return '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: RichText(
+              text: const TextSpan(
+                text: 'Coordenadas: ',
+                style: TextStyle(
+                  color: AppColors.buttonGreen2,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Row(
+              children: [
+                Icon(
+                  iconData,
+                  size: 16,
+                  color: iconColor,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    coordsText,
+                    style: const TextStyle(
+                      color: AppColors.textWhite,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -607,7 +943,7 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
             _buildInfoRow('Clase:', registro['class'] ?? 'No especificada'),
             _buildInfoRow('Hábitat:', registro['habitat'] ?? 'No especificado'),
             _buildInfoRow('Fecha:', _formatDate(registro['lastModifiedAt'])),
-            _buildInfoRow('Coordenadas:', _formatCoords()),
+            _buildCoordsRow(), // Usar el método personalizado para coordenadas
             
             if ((registro['details'] ?? '').toString().isNotEmpty) 
               const SizedBox(height: 12),
@@ -829,9 +1165,13 @@ class FullScreenImageViewer extends StatelessWidget {
       final metadataFileName = imageFileName.replaceAll('.jpg', '_metadata.txt');
       final metadataFile = File('$directoryPath/$metadataFileName');
       
-      // Formatear coordenadas
+      // Formatear coordenadas respetando la visibilidad
       String coordenadas = 'No disponibles';
-      if (registro['coords'] != null) {
+      final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+      
+      if (locationVisibility == 'Privada') {
+        coordenadas = 'No disponible';
+      } else if (registro['coords'] != null) {
         final lat = registro['coords']['x'];
         final lon = registro['coords']['y'];
         if (lat != null && lon != null && (lat != 0 || lon != 0)) {
@@ -885,6 +1225,7 @@ Detalles: ${registro['details'] ?? 'Sin detalles'}
 Notas: ${registro['notes'] ?? 'Sin notas'}
 
 === INFORMACIÓN GEOGRÁFICA ===
+Visibilidad de ubicación: $locationVisibility
 Coordenadas: $coordenadas
 
 === FECHAS ===

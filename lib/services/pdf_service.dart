@@ -255,10 +255,16 @@ class PdfService {
                       _buildInfoRow('Orden:', registro['taxonOrder'] ?? 'No especificado', fontData, fontBold),
                       _buildInfoRow('Clase:', registro['class'] ?? 'No especificada', fontData, fontBold),
                       _buildInfoRow('Hábitat:', registro['habitat'] ?? 'No especificado', fontData, fontBold),
-                      // Coordenadas con enlace a Google Maps
+                      // Coordenadas con enlace a Google Maps o mensaje de privacidad
                       () {
+                        final locationVisibility = registro['locationVisibility'] ?? 'Privada';
                         final coordsData = _getCoordsWithGoogleMapsUrl(registro);
-                        if (coordsData != null) {
+                        
+                        if (locationVisibility == 'Privada') {
+                          // Mostrar mensaje de ubicación privada
+                          return _buildInfoRow('Coordenadas:', 'No disponible', fontData, fontBold);
+                        } else if (coordsData != null) {
+                          // Mostrar coordenadas con enlace
                           return _buildInfoRowWithLink(
                             'Coordenadas:', 
                             coordsData['displayText']!, 
@@ -267,6 +273,7 @@ class PdfService {
                             fontBold
                           );
                         } else {
+                          // No hay coordenadas disponibles
                           return _buildInfoRow('Coordenadas:', 'Sin coordenadas', fontData, fontBold);
                         }
                       }(),
@@ -437,8 +444,17 @@ class PdfService {
     );
   }
 
-  // Método para obtener coordenadas con URL de Google Maps
+  // Método para obtener coordenadas con URL de Google Maps respetando visibilidad
   static Map<String, String>? _getCoordsWithGoogleMapsUrl(Map<String, dynamic> registro) {
+    // Verificar la visibilidad de la ubicación - por defecto privada si no existe
+    final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+    
+    // Si es privada, no devolver coordenadas
+    if (locationVisibility == 'Privada') {
+      return null;
+    }
+    
+    // Si es pública, verificar si hay coordenadas válidas
     if (registro['coords'] == null) return null;
     
     final lat = registro['coords']['x'];

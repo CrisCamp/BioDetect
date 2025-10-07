@@ -47,6 +47,7 @@ class _RegDatosState extends State<RegDatos> {
   String habitat = '';
   String details = '';
   String notes = '';
+  String locationVisibility = ''; // Nueva variable para visibilidad de ubicación
   double lat = 0;
   double lon = 0;
   String? currentImageUrl;
@@ -86,6 +87,13 @@ class _RegDatosState extends State<RegDatos> {
     className = widget.claseArtropodo;
     taxonOrder = widget.ordenTaxonomico;
     currentImageUrl = widget.imageUrl;
+
+    // Inicializar visibilidad de ubicación según el modo
+    if (_isEditing) {
+      locationVisibility = 'Privada'; // Por defecto privada al editar
+    } else {
+      locationVisibility = 'Pública'; // Por defecto pública para nuevos registros
+    }
 
     _checkInternetConnection();
 
@@ -127,6 +135,7 @@ class _RegDatosState extends State<RegDatos> {
       habitat = data['habitat'] ?? '';
       details = data['details'] ?? '';
       notes = data['notes'] ?? '';
+      locationVisibility = data['locationVisibility'] ?? 'Privada'; // Por defecto privada si no existe
       if (data['coords'] != null) {
         lat = data['coords']['x'] ?? 0;
         lon = data['coords']['y'] ?? 0;
@@ -153,6 +162,7 @@ class _RegDatosState extends State<RegDatos> {
           habitat = data['habitat'] ?? '';
           details = data['details'] ?? '';
           notes = data['notes'] ?? '';
+          locationVisibility = data['locationVisibility'] ?? 'Privada'; // Por defecto privada si no existe
           if (data['coords'] != null) {
             lat = data['coords']['x'] ?? 0;
             lon = data['coords']['y'] ?? 0;
@@ -368,6 +378,7 @@ class _RegDatosState extends State<RegDatos> {
                 'details': details,
                 'notes': notes,
                 'coords': {'x': lat, 'y': lon},
+                'locationVisibility': locationVisibility,
                 'lastModifiedAt': FieldValue.serverTimestamp(),
               });
               // Obtener datos actualizados para metadatos
@@ -411,6 +422,7 @@ class _RegDatosState extends State<RegDatos> {
               'details': details,
               'notes': notes,
               'coords': {'x': lat, 'y': lon},
+              'locationVisibility': locationVisibility,
               'lastModifiedAt': FieldValue.serverTimestamp(),
               'syncedAt': null, // Marcar como pendiente de sincronización
             });
@@ -435,6 +447,7 @@ class _RegDatosState extends State<RegDatos> {
           'details': details,
           'notes': notes,
           'coords': {'x': lat, 'y': lon},
+          'locationVisibility': locationVisibility,
           'lastModifiedAt': FieldValue.serverTimestamp(),
         });
         if (mounted) {
@@ -484,6 +497,7 @@ class _RegDatosState extends State<RegDatos> {
       'details': details,
       'notes': notes,
       'coords': {'x': lat, 'y': lon},
+      'locationVisibility': locationVisibility,
     });
     
     // Actualizar actividad del usuario
@@ -749,6 +763,25 @@ class _RegDatosState extends State<RegDatos> {
   String? _getValidHabitatValue() {
     if (habitat.isNotEmpty && _getHabitatItems().any((item) => item.value == habitat)) {
       return habitat;
+    }
+    return null;
+  }
+
+  List<DropdownMenuItem<String>> _getLocationVisibilityItems() {
+    return [
+      'Pública',
+      'Privada'
+    ].map((String value) {
+      return DropdownMenuItem<String>(
+        value: value,
+        child: Text(value),
+      );
+    }).toList();
+  }
+
+  String? _getValidLocationVisibilityValue() {
+    if (locationVisibility.isNotEmpty && _getLocationVisibilityItems().any((item) => item.value == locationVisibility)) {
+      return locationVisibility;
     }
     return null;
   }
@@ -1075,6 +1108,50 @@ class _RegDatosState extends State<RegDatos> {
                                             ),
                                             style: const TextStyle(color: AppColors.textBlack),
                                             validator: _validateLongitud,
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      // Campo Visibilidad de Ubicación
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Visibilidad de ubicación:',
+                                            style: TextStyle(
+                                              color: AppColors.textWhite,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          DropdownButtonFormField<String>(
+                                            value: _getValidLocationVisibilityValue(),
+                                            decoration: InputDecoration(
+                                              hintText: 'Seleccionar visibilidad',
+                                              hintStyle: const TextStyle(color: AppColors.textBlack),
+                                              filled: true,
+                                              fillColor: _isProcessing 
+                                                  ? AppColors.paleGreen.withValues(alpha: 0.5) 
+                                                  : AppColors.paleGreen,
+                                              border: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(8),
+                                                borderSide: BorderSide.none,
+                                              ),
+                                              prefixIcon: const Icon(Icons.visibility, color: AppColors.textBlack),
+                                            ),
+                                            dropdownColor: AppColors.paleGreen,
+                                            style: TextStyle(
+                                              color: _isProcessing 
+                                                  ? AppColors.textBlack.withValues(alpha: 0.5) 
+                                                  : AppColors.textBlack,
+                                            ),
+                                            items: _getLocationVisibilityItems(),
+                                            onChanged: _isProcessing 
+                                                ? null 
+                                                : (value) => setState(() => locationVisibility = value ?? ''),
+                                            validator: (value) => value?.trim().isEmpty ?? true 
+                                                ? 'La visibilidad es requerida' : null,
                                           ),
                                         ],
                                       ),
