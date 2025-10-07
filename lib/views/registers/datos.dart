@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:biodetect/views/badges/galeria_insignias.dart';
 import 'package:biodetect/services/google_drive_service.dart';
+import 'package:biodetect/views/location/location_picker_screen.dart';
 
 class RegDatos extends StatefulWidget {
   final File? imageFile;
@@ -46,6 +47,7 @@ class _RegDatosState extends State<RegDatos> {
   String habitat = '';
   String details = '';
   String notes = '';
+  String locationVisibility = ''; // Nueva variable para visibilidad de ubicación
   double lat = 0;
   double lon = 0;
   String? currentImageUrl;
@@ -85,6 +87,13 @@ class _RegDatosState extends State<RegDatos> {
     className = widget.claseArtropodo;
     taxonOrder = widget.ordenTaxonomico;
     currentImageUrl = widget.imageUrl;
+
+    // Inicializar visibilidad de ubicación según el modo
+    if (_isEditing) {
+      locationVisibility = 'Privada'; // Por defecto privada al editar
+    } else {
+      locationVisibility = 'Pública'; // Por defecto pública para nuevos registros
+    }
 
     _checkInternetConnection();
 
@@ -126,6 +135,7 @@ class _RegDatosState extends State<RegDatos> {
       habitat = data['habitat'] ?? '';
       details = data['details'] ?? '';
       notes = data['notes'] ?? '';
+      locationVisibility = data['locationVisibility'] ?? 'Privada'; // Por defecto privada si no existe
       if (data['coords'] != null) {
         lat = data['coords']['x'] ?? 0;
         lon = data['coords']['y'] ?? 0;
@@ -152,6 +162,7 @@ class _RegDatosState extends State<RegDatos> {
           habitat = data['habitat'] ?? '';
           details = data['details'] ?? '';
           notes = data['notes'] ?? '';
+          locationVisibility = data['locationVisibility'] ?? 'Privada'; // Por defecto privada si no existe
           if (data['coords'] != null) {
             lat = data['coords']['x'] ?? 0;
             lon = data['coords']['y'] ?? 0;
@@ -367,6 +378,7 @@ class _RegDatosState extends State<RegDatos> {
                 'details': details,
                 'notes': notes,
                 'coords': {'x': lat, 'y': lon},
+                'locationVisibility': locationVisibility,
                 'lastModifiedAt': FieldValue.serverTimestamp(),
               });
               // Obtener datos actualizados para metadatos
@@ -410,6 +422,7 @@ class _RegDatosState extends State<RegDatos> {
               'details': details,
               'notes': notes,
               'coords': {'x': lat, 'y': lon},
+              'locationVisibility': locationVisibility,
               'lastModifiedAt': FieldValue.serverTimestamp(),
               'syncedAt': null, // Marcar como pendiente de sincronización
             });
@@ -434,6 +447,7 @@ class _RegDatosState extends State<RegDatos> {
           'details': details,
           'notes': notes,
           'coords': {'x': lat, 'y': lon},
+          'locationVisibility': locationVisibility,
           'lastModifiedAt': FieldValue.serverTimestamp(),
         });
         if (mounted) {
@@ -483,6 +497,7 @@ class _RegDatosState extends State<RegDatos> {
       'details': details,
       'notes': notes,
       'coords': {'x': lat, 'y': lon},
+      'locationVisibility': locationVisibility,
     });
     
     // Actualizar actividad del usuario
@@ -567,6 +582,62 @@ class _RegDatosState extends State<RegDatos> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al obtener ubicación: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openLocationPicker() async {
+    if (_isProcessing) return;
+
+    try {
+      // Obtener coordenadas actuales de los campos de texto
+      double? currentLat;
+      double? currentLon;
+
+      if (_latitudController.text.isNotEmpty) {
+        currentLat = double.tryParse(_latitudController.text);
+      }
+      if (_longitudController.text.isNotEmpty) {
+        currentLon = double.tryParse(_longitudController.text);
+      }
+
+      // Abrir el selector de ubicación
+      final result = await Navigator.of(context).push<Map<String, double>>(
+        MaterialPageRoute(
+          builder: (context) => LocationPickerScreen(
+            initialLatitude: currentLat,
+            initialLongitude: currentLon,
+            taxonOrder: taxonOrder.isNotEmpty ? taxonOrder : widget.ordenTaxonomico, // Pasar el orden taxonómico
+          ),
+        ),
+      );
+
+      // Si el usuario seleccionó una ubicación, actualizar los campos
+      if (result != null && result.containsKey('latitude') && result.containsKey('longitude')) {
+        setState(() {
+          lat = result['latitude']!;
+          lon = result['longitude']!;
+          _latitudController.text = lat.toStringAsFixed(6);
+          _longitudController.text = lon.toStringAsFixed(6);
+        });
+
+        // Mostrar confirmación
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ubicación seleccionada desde el mapa'),
+            backgroundColor: AppColors.buttonGreen2,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al abrir el mapa: $e'),
+            backgroundColor: AppColors.warning,
+          ),
         );
       }
     }
@@ -692,6 +763,25 @@ class _RegDatosState extends State<RegDatos> {
   String? _getValidHabitatValue() {
     if (habitat.isNotEmpty && _getHabitatItems().any((item) => item.value == habitat)) {
       return habitat;
+    }
+    return null;
+  }
+
+  List<DropdownMenuItem<String>> _getLocationVisibilityItems() {
+    return [
+      'Pública',
+      'Privada'
+    ].map((String value) {
+      return DropdownMenuItem<String>(
+        value: value,
+        child: Text(value),
+      );
+    }).toList();
+  }
+
+  String? _getValidLocationVisibilityValue() {
+    if (locationVisibility.isNotEmpty && _getLocationVisibilityItems().any((item) => item.value == locationVisibility)) {
+      return locationVisibility;
     }
     return null;
   }
@@ -886,38 +976,61 @@ class _RegDatosState extends State<RegDatos> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
+                                      // Header de coordenadas
                                       Row(
                                         children: [
-                                          const Icon(Icons.location_on, color: AppColors.buttonGreen2),
+                                          const Icon(Icons.location_on, color: AppColors.buttonGreen2, size: 20),
                                           const SizedBox(width: 8),
-                                          const Text(
-                                            'Coordenadas GPS',
-                                            style: TextStyle(
-                                              color: AppColors.textWhite,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
+                                          const Expanded(
+                                            child: Text(
+                                              'Ubicación',
+                                              style: TextStyle(
+                                                color: AppColors.textWhite,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
                                           ),
-                                          const Spacer(),
-                                          // Botón de ubicación solo con icono
+                                          // Botón de mapa más compacto
                                           Container(
+                                            margin: const EdgeInsets.only(right: 4),
+                                            width: 36,
+                                            height: 36,
+                                            decoration: BoxDecoration(
+                                              color: AppColors.buttonBrown2,
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: IconButton(
+                                              icon: const Icon(Icons.map, size: 18),
+                                              color: AppColors.textBlack,
+                                              onPressed: _isProcessing ? null : _openLocationPicker,
+                                              tooltip: 'Mapa',
+                                              padding: EdgeInsets.zero,
+                                            ),
+                                          ),
+                                          // Botón de ubicación actual más compacto
+                                          Container(
+                                            width: 36,
+                                            height: 36,
                                             decoration: BoxDecoration(
                                               color: AppColors.buttonGreen2,
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius: BorderRadius.circular(6),
                                             ),
                                             child: IconButton(
                                               icon: _isGettingLocation
                                                   ? const SizedBox(
-                                                      width: 20,
-                                                      height: 20,
+                                                      width: 16,
+                                                      height: 16,
                                                       child: CircularProgressIndicator(
                                                         color: AppColors.textBlack,
                                                         strokeWidth: 2,
                                                       ),
                                                     )
-                                                  : const Icon(Icons.my_location, color: AppColors.textBlack),
+                                                  : const Icon(Icons.my_location, size: 18),
+                                              color: AppColors.textBlack,
                                               onPressed: (_isProcessing || _isGettingLocation) ? null : _getCurrentLocation,
-                                              tooltip: 'Obtener ubicación actual',
+                                              tooltip: 'Ubicación actual',
+                                              padding: EdgeInsets.zero,
                                             ),
                                           ),
                                         ],
@@ -995,6 +1108,50 @@ class _RegDatosState extends State<RegDatos> {
                                             ),
                                             style: const TextStyle(color: AppColors.textBlack),
                                             validator: _validateLongitud,
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      // Campo Visibilidad de Ubicación
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Visibilidad de ubicación:',
+                                            style: TextStyle(
+                                              color: AppColors.textWhite,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          DropdownButtonFormField<String>(
+                                            value: _getValidLocationVisibilityValue(),
+                                            decoration: InputDecoration(
+                                              hintText: 'Seleccionar visibilidad',
+                                              hintStyle: const TextStyle(color: AppColors.textBlack),
+                                              filled: true,
+                                              fillColor: _isProcessing 
+                                                  ? AppColors.paleGreen.withValues(alpha: 0.5) 
+                                                  : AppColors.paleGreen,
+                                              border: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(8),
+                                                borderSide: BorderSide.none,
+                                              ),
+                                              prefixIcon: const Icon(Icons.visibility, color: AppColors.textBlack),
+                                            ),
+                                            dropdownColor: AppColors.paleGreen,
+                                            style: TextStyle(
+                                              color: _isProcessing 
+                                                  ? AppColors.textBlack.withValues(alpha: 0.5) 
+                                                  : AppColors.textBlack,
+                                            ),
+                                            items: _getLocationVisibilityItems(),
+                                            onChanged: _isProcessing 
+                                                ? null 
+                                                : (value) => setState(() => locationVisibility = value ?? ''),
+                                            validator: (value) => value?.trim().isEmpty ?? true 
+                                                ? 'La visibilidad es requerida' : null,
                                           ),
                                         ],
                                       ),
