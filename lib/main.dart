@@ -4,12 +4,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:biodetect/menu.dart';
 import 'package:biodetect/views/session/inicio_sesion.dart';
 import 'package:biodetect/themes.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Inicializar AdMob
+  await MobileAds.instance.initialize();
   
   // Configurar Mapbox access token
   const String mapboxAccessToken = "pk.eyJ1IjoiYmlvZGV0ZWN0YXBwIiwiYSI6ImNtZjAyMnE1YTBpaXYydHByaTR3dm9xZjkifQ.wrMFQYEPE_iWQnezMPPbwQ";

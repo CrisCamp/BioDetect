@@ -54,6 +54,8 @@ dependencies:
   # Recortar imagenes
   crop_your_image: ^0.7.5
 
+  google_mobile_ads: ^5.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
