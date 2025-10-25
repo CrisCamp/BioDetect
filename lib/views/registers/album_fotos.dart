@@ -3,11 +3,11 @@ import 'dart:async';
 import 'package:biodetect/themes.dart';
 import 'package:biodetect/views/registers/lista_registros.dart';
 import 'package:biodetect/views/registers/captura_foto.dart';
-import 'package:biodetect/views/registers/fotos_pendientes.dart';
 import 'package:biodetect/views/map/mapa.dart';
 import 'package:biodetect/services/google_drive_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -24,10 +24,15 @@ class _AlbumFotosState extends State<AlbumFotos> {
   bool _hasInternet = true;
   Timer? _connectionCheckTimer; // Timer para verificación de conexión automática
   bool _isSyncing = false; // Estado de sincronización con Drive
+  
+  // Variables para AdMob
+  BannerAd? _bannerAd;
+  bool _isBannerAdReady = false;
 
   @override
   void initState() {
     super.initState();
+    _initializeBannerAd();
     _loadPhotos();
     _checkInternetConnection();
     _startPeriodicConnectionCheck(); // Iniciar verificación automática
@@ -36,7 +41,32 @@ class _AlbumFotosState extends State<AlbumFotos> {
   @override
   void dispose() {
     _connectionCheckTimer?.cancel(); // Limpiar Timer al destruir el widget
+    _bannerAd?.dispose(); // Limpiar el banner ad
     super.dispose();
+  }
+
+  // Método para inicializar el banner de AdMob
+  void _initializeBannerAd() {
+    _bannerAd = BannerAd(
+      adUnitId: Platform.isAndroid
+          ? 'ca-app-pub-2455614119782029/5903033792' // ID para Android
+          : 'ca-app-pub-3940256099942544/2934735716', // ID para iOS
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          setState(() {
+            _isBannerAdReady = true;
+          });
+        },
+        onAdFailedToLoad: (ad, error) {
+          print('AdMob Error: ${error.message}');
+          ad.dispose();
+        },
+      ),
+    );
+
+    _bannerAd?.load();
   }
 
   Future<void> _checkInternetConnection() async {
@@ -1004,6 +1034,14 @@ class _AlbumFotosState extends State<AlbumFotos> {
         child: SafeArea(
           child: Column(
             children: [
+              // Banner de AdMob
+              if (_isBannerAdReady && _bannerAd != null)
+                Container(
+                  alignment: Alignment.center,
+                  width: _bannerAd!.size.width.toDouble(),
+                  height: _bannerAd!.size.height.toDouble(),
+                  child: AdWidget(ad: _bannerAd!),
+                ),
               // Header con indicador de conexión
               Padding(
                 padding: const EdgeInsets.all(16),

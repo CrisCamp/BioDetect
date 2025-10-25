@@ -7,6 +7,7 @@ import 'package:biodetect/views/notes/crear_editar_bitacora_screen.dart';
 import 'package:biodetect/views/notes/mis_bitacoras.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class ExplorarBitacorasPublicasScreen extends StatefulWidget {
   const ExplorarBitacorasPublicasScreen({super.key});
@@ -24,9 +25,14 @@ class _ExplorarBitacorasPublicasScreenState extends State<ExplorarBitacorasPubli
   String _searchText = '';
   String _ordenActual = 'fecha'; // fecha, alfabetico
 
+  // Variables para AdMob
+  BannerAd? _bannerAd;
+  bool _isBannerAdReady = false;
+
   @override
   void initState() {
     super.initState();
+    _initializeBannerAd();
     _loadBitacoras();
     _checkInternetConnection();
     _startPeriodicConnectionCheck(); // Iniciar verificación de conexión automática
@@ -35,7 +41,32 @@ class _ExplorarBitacorasPublicasScreenState extends State<ExplorarBitacorasPubli
   @override
   void dispose() {
     _connectionCheckTimer?.cancel(); // Cancelar timer al destruir widget
+    _bannerAd?.dispose(); // Limpiar el banner ad
     super.dispose();
+  }
+
+  // Método para inicializar el banner de AdMob
+  void _initializeBannerAd() {
+    _bannerAd = BannerAd(
+      adUnitId: Platform.isAndroid
+          ? 'ca-app-pub-2455614119782029/5903033792' // ID para Android
+          : 'ca-app-pub-3940256099942544/2934735716', // ID para iOS
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          setState(() {
+            _isBannerAdReady = true;
+          });
+        },
+        onAdFailedToLoad: (ad, error) {
+          print('AdMob Error: ${error.message}');
+          ad.dispose();
+        },
+      ),
+    );
+
+    _bannerAd?.load();
   }
 
   Future<void> _checkInternetConnection() async {
@@ -181,6 +212,14 @@ class _ExplorarBitacorasPublicasScreenState extends State<ExplorarBitacorasPubli
         child: SafeArea(
           child: Column(
             children: [
+              // Banner de AdMob
+              if (_isBannerAdReady && _bannerAd != null)
+                Container(
+                  alignment: Alignment.center,
+                  width: _bannerAd!.size.width.toDouble(),
+                  height: _bannerAd!.size.height.toDouble(),
+                  child: AdWidget(ad: _bannerAd!),
+                ),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(

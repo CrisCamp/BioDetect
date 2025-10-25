@@ -10,6 +10,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -23,9 +24,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _hasInternet = true;
   Timer? _internetTimer;
 
+  // Variables para AdMob
+  BannerAd? _bannerAd;
+  bool _isBannerAdReady = false;
+
   @override
   void initState() {
     super.initState();
+    _initializeBannerAd();
     _checkInternet();
     _userDataFuture = _loadUserData();
     _internetTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
@@ -36,7 +42,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _internetTimer?.cancel();
+    _bannerAd?.dispose(); // Limpiar el banner ad
     super.dispose();
+  }
+
+  // Método para inicializar el banner de AdMob
+  void _initializeBannerAd() {
+    _bannerAd = BannerAd(
+      adUnitId: Platform.isAndroid
+          ? 'ca-app-pub-2455614119782029/5903033792' // ID para Android
+          : 'ca-app-pub-3940256099942544/2934735716', // ID para iOS
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          setState(() {
+            _isBannerAdReady = true;
+          });
+        },
+        onAdFailedToLoad: (ad, error) {
+          print('AdMob Error: ${error.message}');
+          ad.dispose();
+        },
+      ),
+    );
+
+    _bannerAd?.load();
   }
 
   Future<void> _checkInternet() async {
@@ -177,6 +208,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: SafeArea(
           child: Column(
             children: [
+              // Banner de AdMob
+              if (_isBannerAdReady && _bannerAd != null)
+                Container(
+                  alignment: Alignment.center,
+                  width: _bannerAd!.size.width.toDouble(),
+                  height: _bannerAd!.size.height.toDouble(),
+                  child: AdWidget(ad: _bannerAd!),
+                ),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
