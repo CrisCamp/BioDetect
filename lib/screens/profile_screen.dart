@@ -8,7 +8,6 @@ import 'package:biodetect/themes.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
@@ -85,6 +84,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
       }
     }
+  }
+
+  String _maskEmail(String email) {
+    if (email.isEmpty || email == 'Correo no disponible') {
+      return email;
+    }
+    
+    final atIndex = email.indexOf('@');
+    if (atIndex == -1) {
+      // Si no hay @, mostrar solo los primeros 3 caracteres
+      if (email.length <= 3) return email;
+      return '${email.substring(0, 3)}${'*' * (email.length - 3)}';
+    }
+    
+    final localPart = email.substring(0, atIndex);
+    final domainPart = email.substring(atIndex);
+    
+    if (localPart.length <= 3) {
+      return email; // Si la parte local es muy corta, mostrar completo
+    }
+    
+    // Mostrar primeros 3 caracteres + asteriscos + dominio completo
+    final maskedLocal = '${localPart.substring(0, 3)}${'*' * (localPart.length - 3)}';
+    return '$maskedLocal$domainPart';
   }
 
   Future<Map<String, dynamic>> _loadUserData() async {
@@ -277,6 +300,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                     final String nombre = user['fullname'] ?? 'Nombre no disponible';
                     final String correo = user['email'] ?? 'Correo no disponible';
+                    final String correoEnmascarado = _maskEmail(correo);
                     final String? foto = user['profilePicture'];
                     final bool verificado = FirebaseAuth.instance.currentUser?.emailVerified ?? false;
                     final int identificaciones = activity['photosUploaded'] ?? 0;
@@ -318,7 +342,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(
-                                  correo,
+                                  correoEnmascarado,
                                   style: const TextStyle(
                                     color: AppColors.textWhite,
                                     fontSize: 14,
@@ -467,51 +491,46 @@ class _EstadisticaCard extends StatelessWidget {
   final String label;
   final int value;
   final Color iconColor;
-  final VoidCallback? onTap;
 
   const _EstadisticaCard({
     required this.icon,
     required this.label,
     required this.value,
     required this.iconColor,
-    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Card(
-          color: AppColors.backgroundCard,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          margin: const EdgeInsets.symmetric(horizontal: 8),
-          child: SizedBox(
-            height: 120,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 40, color: iconColor),
-                const SizedBox(height: 8),
-                Text(
-                  value.toString(),
-                  style: const TextStyle(
-                    color: AppColors.textWhite,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
+      child: Card(
+        color: AppColors.backgroundCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        child: SizedBox(
+          height: 120,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 40, color: iconColor),
+              const SizedBox(height: 8),
+              Text(
+                value.toString(),
+                style: const TextStyle(
+                  color: AppColors.textWhite,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
                 ),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: AppColors.textWhite,
-                    fontSize: 12,
-                  ),
+              ),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: AppColors.textWhite,
+                  fontSize: 12,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
