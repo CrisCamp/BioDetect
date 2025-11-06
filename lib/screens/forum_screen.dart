@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:biodetect/themes.dart';
+import 'package:biodetect/services/banner_ad_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
@@ -13,9 +14,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
-import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
-// Modal para mostrar el perfil del usuario
 class UserProfileModal extends StatelessWidget {
   final String userId;
   final String userName;
@@ -52,7 +52,7 @@ class UserProfileModal extends StatelessWidget {
                 radius: 50,
                 backgroundImage:
                     profilePictureUrl != null && profilePictureUrl!.isNotEmpty
-                        ? NetworkImage(profilePictureUrl!)
+                        ? CachedNetworkImageProvider(profilePictureUrl!)
                         : null,
                 child: profilePictureUrl == null || profilePictureUrl!.isEmpty
                     ? const Icon(Icons.person, color: Colors.white, size: 60)
@@ -60,7 +60,6 @@ class UserProfileModal extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
-              // Nombre del usuario
               Text(
                 esPropio ? '$userName (Tú)' : userName,
                 style: const TextStyle(
@@ -72,7 +71,6 @@ class UserProfileModal extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // Sección de insignias
               FutureBuilder<QuerySnapshot>(
                 future: FirebaseFirestore.instance.collection('badges').get(),
                 builder: (context, badgesSnapshot) {
@@ -292,7 +290,6 @@ class UserProfileModal extends StatelessWidget {
 
               const SizedBox(height: 20),
 
-              // Botón cerrar
               ElevatedButton(
                 onPressed: () => Navigator.of(context).pop(),
                 style: ElevatedButton.styleFrom(
@@ -314,19 +311,18 @@ class UserProfileModal extends StatelessWidget {
   }
 }
 
-// Modelo simple para el mensaje
 class Message {
   final String id;
   final String userId;
   final String userName;
   final String content;
   final bool includeImage;
-  final String? imageUrl; // Será nulo si includeImage es false
-  final String? profilePictureUrl; // URL de la foto de perfil del usuario
-  final String badgeProgress; // Progreso de insignias en formato "X/13"
+  final String? imageUrl;
+  final String? profilePictureUrl;
+  final String badgeProgress;
   final Timestamp createdAt;
-  final bool esPropio; // Para determinar si el mensaje es del usuario actual
-  final bool isPending; // Para indicar si el mensaje está pendiente de envío
+  final bool esPropio;
+  final bool isPending;
 
   Message({
     required this.id,
@@ -336,29 +332,42 @@ class Message {
     required this.includeImage,
     this.imageUrl,
     this.profilePictureUrl,
-    this.badgeProgress = "0/13", // Valor por defecto
+    this.badgeProgress = "0/13",
     required this.createdAt,
     required this.esPropio,
-    this.isPending = false, // Por defecto no está pendiente
+    this.isPending = false,
   });
 
   factory Message.fromFirestore(DocumentSnapshot doc, String currentUserId) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    
+    if (data.containsKey('test') && data['test'] == true) {
+      throw Exception('Documento de prueba detectado - no crear mensaje');
+    }
+    
+    final content = data['content'] ?? '';
+    if (content.trim().isEmpty) {
+      throw Exception('Mensaje con contenido vacío - no crear mensaje');
+    }
+    
+    final userId = data['userId'] ?? '';
+    if (userId.isEmpty) {
+      throw Exception('Mensaje sin userId válido - no crear mensaje');
+    }
+    
     return Message(
       id: doc.id,
-      userId: data['userId'] ?? '',
+      userId: userId,
       userName: data['user_name'] ?? 'Usuario Desconocido',
-      content: data['content'] ?? '',
+      content: content,
       includeImage: data['includeImage'] ?? false,
       imageUrl: data['imageUrl'],
-      profilePictureUrl:
-          null, // Se cargará después con el método loadProfilePicture
+      profilePictureUrl: null,
       createdAt: data['createdAt'] ?? Timestamp.now(),
-      esPropio: data['userId'] == currentUserId,
+      esPropio: userId == currentUserId,
     );
   }
 
-  // Método estático para cargar la foto de perfil del usuario
   static Future<String?> loadProfilePicture(String userId) async {
     try {
       final userDoc = await FirebaseFirestore.instance
@@ -376,7 +385,6 @@ class Message {
     return null;
   }
 
-  // Método estático para cargar datos del perfil del usuario (foto y progreso de insignias)
   static Future<Message> loadUserProfileData(Message message) async {
     try {
       final userDoc = await FirebaseFirestore.instance
@@ -388,7 +396,7 @@ class Message {
         final userData = userDoc.data() as Map<String, dynamic>;
         final badges = userData['badges'] as List<dynamic>? ?? [];
         final badgeCount = badges.length;
-        const totalBadges = 13; // Total de insignias disponibles
+        const totalBadges = 13;
 
         final profilePictureUrl = userData['profilePicture'] as String?;
         final badgeProgress = '$badgeCount/$totalBadges';
@@ -401,7 +409,6 @@ class Message {
     return message.copyWithProfileData(null, '0/13');
   }
 
-  // Método para crear una copia del mensaje con los datos del perfil
   Message copyWithProfileData(String? profilePictureUrl, String badgeProgress) {
     return Message(
       id: id,
@@ -414,17 +421,15 @@ class Message {
       badgeProgress: badgeProgress,
       createdAt: createdAt,
       esPropio: esPropio,
-      isPending: isPending, // Mantener el estado de pendiente
+      isPending: isPending,
     );
   }
 
-  // Método para formatear la hora
   String get formattedTime {
     final dateTime = createdAt.toDate();
     return "${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}";
   }
 
-  // Convertir mensaje a JSON para persistencia
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -441,7 +446,6 @@ class Message {
     };
   }
 
-  // Crear mensaje desde JSON para persistencia
   factory Message.fromJson(Map<String, dynamic> json) {
     return Message(
       id: json['id'] ?? '',
@@ -466,80 +470,73 @@ class ForumScreen extends StatefulWidget {
   State<ForumScreen> createState() => _ForumScreenState();
 }
 
-class _ForumScreenState extends State<ForumScreen> {
+class _ForumScreenState extends State<ForumScreen> with WidgetsBindingObserver, BannerAdMixin {
   File? _image;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  String? _currentUserId; // <--- Para obtener el ID del usuario actual
-  String? _currentUserName; // <--- Para obtener el nombre del usuario actual
+  String? _currentUserId;
+  String? _currentUserName;
 
-  // --- Lógica para enviar mensajes ---
   final TextEditingController _messageController = TextEditingController();
   bool _isSending = false;
 
-  // --- Nuevas variables para optimización ---
-  List<Message> _messages = []; // Cache local de mensajes
+  List<Message> _messages = [];
   StreamSubscription<QuerySnapshot>? _messageSubscription;
-  Timestamp? _lastMessageTimestamp; // Para cargar solo mensajes nuevos
+  Timestamp? _lastMessageTimestamp;
   bool _isLoadingHistory = false;
-  static const int _messageLimit = 150; // Límite de mensajes
+  bool _isLoadingMore = false;
+  static const int _messageLimit = 50;
+  static const int _loadMoreLimit = 10;
+  DocumentSnapshot? _lastDocument;
+  bool _hasMoreMessages = true;
+  final ScrollController _scrollController = ScrollController();
 
-  // --- Variables para gestión de conectividad ---
   bool _hasInternet = true;
-  List<Message> _pendingMessages = []; // Mensajes pendientes de envío
-  bool _isSendingPendingMessages =
-      false; // Estado de envío de mensajes pendientes
+  bool _isSendingPendingMessages = false;
   Timer? _connectionCheckTimer;
-
-  // --- Variables para AdMob ---
-  BannerAd? _bannerAd;
-  bool _isBannerAdReady = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeBannerAd();
+    WidgetsBinding.instance.addObserver(this);
+    _configureCacheSettings();
+    initializeBanner();
+    _setupScrollListener();
     _initializeApp();
   }
 
-  // Método para inicializar el banner de AdMob
-  void _initializeBannerAd() {
-    _bannerAd = BannerAd(
-      adUnitId: Platform.isAndroid
-          ? 'ca-app-pub-2455614119782029/5903033792' // ID para Android
-          : 'ca-app-pub-3940256099942544/2934735716', // ID para iOS
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (ad) {
-          setState(() {
-            _isBannerAdReady = true;
-          });
-        },
-        onAdFailedToLoad: (ad, error) {
-          print('AdMob Error: ${error.message}');
-          ad.dispose();
-        },
-      ),
-    );
+  void _setupScrollListener() {
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+        if (!_isLoadingMore && _hasMoreMessages && _hasInternet) {
+          _loadMoreMessages();
+        }
+      }
+    });
+  }
 
-    _bannerAd?.load();
+  void _configureCacheSettings() {
+  }
+
+  bool _hasPendingMessages() {
+    return _messages.any((msg) => msg.isPending);
+  }
+
+  int _getPendingMessagesCount() {
+    return _messages.where((msg) => msg.isPending).length;
+  }
+
+  List<Message> _getPendingMessages() {
+    return _messages.where((msg) => msg.isPending).toList();
   }
 
   Future<void> _initializeApp() async {
-    // Cargar mensajes pendientes del caché primero
     await _loadPendingMessages();
-
-    // Obtener usuario actual
+    await _cleanupPendingMessages();
     _getCurrentUser();
-
-    // Verificar conexión a internet
     await _checkInternetConnection();
-
-    // Iniciar el chequeo periódico de conexión
     _startPeriodicConnectionCheck();
 
-    // Esperar un momento para que todo se inicialice y luego verificar mensajes pendientes
     Timer(const Duration(seconds: 3), () {
       _checkAndSendPendingMessagesOnStartup();
     });
@@ -548,22 +545,39 @@ class _ForumScreenState extends State<ForumScreen> {
   void _getCurrentUser() {
     final user = _auth.currentUser;
     if (user != null) {
+      String userName = user.displayName ?? '';
+      
+      if (userName.isEmpty && user.email != null) {
+        userName = user.email!.split('@').first;
+      }
+      
+      if (userName.isEmpty) {
+        userName = "Usuario";
+      }
+      
       setState(() {
         _currentUserId = user.uid;
-        _currentUserName = user.displayName ?? "Usuario Desconocido";
+        _currentUserName = userName;
       });
-      _initializeMessageStream(); // Inicializar el stream después de obtener el usuario
-      _addPendingMessagesToUI(); // Agregar mensajes pendientes a la UI
+      
+      if (kDebugMode) {
+        print('✅ Usuario autenticado:');
+        print('   - ID: ${user.uid}');
+        print('   - Nombre: $userName');
+        print('   - Email: ${user.email}');
+        print('   - DisplayName: ${user.displayName}');
+      }
+      
+      _initializeMessageStream();
+      _addPendingMessagesToUI();
     } else {
       if (kDebugMode) {
         print(
             "Usuario no autenticado. El foro podría no funcionar completamente.");
       }
-      // Aqui probablemente redirija al login
     }
   }
 
-  // Verificar conexión a internet
   Future<void> _checkInternetConnection() async {
     try {
       final result = await InternetAddress.lookup('google.com');
@@ -575,56 +589,94 @@ class _ForumScreenState extends State<ForumScreen> {
         _hasInternet = hasConnection;
       });
 
-      // Si recuperamos la conexión, enviar mensajes pendientes y reactivar listener
-      if (wasOffline && hasConnection && _pendingMessages.isNotEmpty) {
+      if (kDebugMode) {
+        print('🌐 Estado de conexión:');
+        print('   - Anteriormente offline: $wasOffline');
+        print('   - Ahora online: $hasConnection');
+        print('   - Listener activo: ${_messageSubscription != null}');
+        print('   - Usuario ID: $_currentUserId');
+      }
+
+      if (wasOffline && hasConnection && _hasPendingMessages()) {
         if (kDebugMode) {
-          print(
-              'Conexión recuperada. Enviando ${_pendingMessages.length} mensajes pendientes...');
-          // Ejecutar prueba de conectividad antes de intentar enviar mensajes
+          print('Conexión recuperada. Enviando ${_getPendingMessagesCount()} mensajes pendientes...');
           _testFirestoreConnection();
         }
         _sendPendingMessages();
-        _setupNewMessageListener(); // Reactivar listener
-      } else if (hasConnection && _messageSubscription == null) {
-        // Si hay conexión pero no hay listener activo, reactivarlo
         _setupNewMessageListener();
+      } else if (hasConnection && _messageSubscription == null && _currentUserId != null) {
+        // Si tenemos conexión pero no hay listener activo, configurar uno nuevo
+        // SOLO si ya se han cargado los mensajes iniciales (indicado por _lastMessageTimestamp o mensajes en cache)
+        if (_lastMessageTimestamp != null || _messages.isNotEmpty) {
+          if (kDebugMode) {
+            print('🔗 Configurando listener - conexión disponible pero listener inactivo');
+          }
+          _setupNewMessageListener();
+        } else {
+          if (kDebugMode) {
+            print('⏳ Esperando carga inicial de mensajes antes de configurar listener');
+          }
+        }
       } else if (!hasConnection && _messageSubscription != null) {
-        // Si se pierde la conexión, cancelar el listener para ahorrar recursos
+        // Si no hay conexión, cancelar el listener
+        if (kDebugMode) {
+          print('❌ Sin conexión - cancelando listener');
+        }
         _messageSubscription?.cancel();
         _messageSubscription = null;
+      } else if (hasConnection && _messageSubscription != null) {
+        // Verificar que el listener esté funcionando correctamente
+        if (kDebugMode) {
+          print('✅ Conexión y listener activos');
+        }
       }
-    } catch (_) {
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error verificando conexión: $e');
+      }
       setState(() {
         _hasInternet = false;
       });
+      
+      // Cancelar listener si hay error de conexión
+      if (_messageSubscription != null) {
+        _messageSubscription?.cancel();
+        _messageSubscription = null;
+      }
     }
   }
 
-  // Verificación periódica de conexión
   void _startPeriodicConnectionCheck() {
     _connectionCheckTimer =
         Timer.periodic(const Duration(seconds: 10), (timer) {
       _checkInternetConnection();
+      
+      // Verificar también que el listener esté activo cuando debería estarlo
+      if (_hasInternet && _currentUserId != null && _messageSubscription == null) {
+        // Solo reactivar si ya se completó la carga inicial
+        if (_lastMessageTimestamp != null || _messages.isNotEmpty) {
+          if (kDebugMode) {
+            print('🔄 Detectado listener inactivo con conexión disponible - reactivando');
+          }
+          _setupNewMessageListener();
+        }
+      }
     });
   }
 
-  // Verificar y enviar mensajes pendientes al iniciar la app
   Future<void> _checkAndSendPendingMessagesOnStartup() async {
     if (kDebugMode) {
       print('🔄 Verificando mensajes pendientes al iniciar la app...');
-      print('   - Mensajes pendientes: ${_pendingMessages.length}');
+      print('   - Mensajes pendientes: ${_getPendingMessagesCount()}');
       print('   - Internet disponible: $_hasInternet');
       print('   - Usuario actual: $_currentUserId');
     }
 
-    // Si hay mensajes pendientes, verificar conexión más profunda
-    if (_pendingMessages.isNotEmpty) {
+    if (_hasPendingMessages()) {
       if (kDebugMode) {
-        print(
-            '📤 Hay mensajes pendientes, verificando conexión a Firestore...');
+        print('📤 Hay mensajes pendientes, verificando conexión a Firestore...');
       }
 
-      // Probar conexión a Firestore
       bool firestoreConnected = await _testFirestoreConnection();
 
       if (firestoreConnected && _currentUserId != null) {
@@ -648,30 +700,25 @@ class _ForumScreenState extends State<ForumScreen> {
     }
   }
 
-  // Enviar mensajes pendientes cuando se recupere la conexión
   Future<void> _sendPendingMessages() async {
-    if (_pendingMessages.isEmpty || !_hasInternet || _isSendingPendingMessages)
+    if (!_hasPendingMessages() || !_hasInternet || _isSendingPendingMessages)
       return;
 
     if (kDebugMode) {
-      print(
-          '🚀 Iniciando envío de ${_pendingMessages.length} mensajes pendientes...');
+      print('🚀 Iniciando envío de ${_getPendingMessagesCount()} mensajes pendientes...');
       print('   - Usuario actual: $_currentUserId');
       print('   - Nombre usuario: $_currentUserName');
       print('   - Internet disponible: $_hasInternet');
     }
 
-    // Verificar autenticación
     final currentUser = _auth.currentUser;
     if (currentUser == null) {
       if (kDebugMode) {
-        print(
-            '❌ Usuario no autenticado, cancelando envío de mensajes pendientes');
+        print('❌ Usuario no autenticado, cancelando envío de mensajes pendientes');
       }
       return;
     }
 
-    // Verificar conexión a Firestore
     try {
       await _firestore.collection('group_chat').limit(1).get();
       if (kDebugMode) {
@@ -691,7 +738,7 @@ class _ForumScreenState extends State<ForumScreen> {
       _isSendingPendingMessages = true;
     });
 
-    final messagesToSend = List<Message>.from(_pendingMessages);
+    final messagesToSend = _getPendingMessages();
     final sentMessageIds = <String>{};
 
     int sentCount = 0;
@@ -699,8 +746,7 @@ class _ForumScreenState extends State<ForumScreen> {
 
     for (final message in messagesToSend) {
       if (kDebugMode) {
-        print(
-            '📤 Procesando mensaje: ${message.content.substring(0, message.content.length > 20 ? 20 : message.content.length)}...');
+        print('📤 Procesando mensaje: ${message.content.substring(0, message.content.length > 20 ? 20 : message.content.length)}...');
         print('   - ID: ${message.id}');
         print('   - Include Image: ${message.includeImage}');
         print('   - Is Pending: ${message.isPending}');
@@ -721,18 +767,15 @@ class _ForumScreenState extends State<ForumScreen> {
           print('   - ⚠️ Saltando mensaje con datos de usuario incompletos');
         }
         failedCount++;
-        _pendingMessages.add(message);
         continue;
       }
 
       try {
-        // Solo enviar mensajes de texto (sin imágenes)
         if (!message.includeImage) {
           if (kDebugMode) {
             print('   - Enviando mensaje de texto...');
           }
 
-          // Agregar timeout de 10 segundos para el envío
           await _sendMessageToFirestore(message).timeout(
             const Duration(seconds: 10),
             onTimeout: () {
@@ -747,15 +790,12 @@ class _ForumScreenState extends State<ForumScreen> {
             print('   - ✅ Mensaje enviado exitosamente');
           }
         } else {
-          // Si tiene imagen, mantener en pendientes
           failedCount++;
           if (kDebugMode) {
-            print(
-                '   - ❌ Mensaje con imagen no enviado (sin conexión para imágenes)');
+            print('   - ❌ Mensaje con imagen no enviado (sin conexión para imágenes)');
           }
         }
       } catch (e) {
-        // Si falla, mantener en pendientes
         failedCount++;
         if (kDebugMode) {
           print('   - ❌ Error enviando mensaje: $e');
@@ -763,21 +803,35 @@ class _ForumScreenState extends State<ForumScreen> {
       }
     }
 
-    // Actualizar pendientes: mantener solo los que fallaron
     setState(() {
-      _pendingMessages.removeWhere((msg) => sentMessageIds.contains(msg.id));
-      // Remover también de la UI los mensajes que se enviaron exitosamente
-      _messages.removeWhere(
-          (msg) => msg.isPending && sentMessageIds.contains(msg.id));
+      for (final messageId in sentMessageIds) {
+        final index = _messages.indexWhere((msg) => msg.id == messageId);
+        if (index != -1) {
+          final existingMsg = _messages[index];
+          _messages[index] = Message(
+            id: existingMsg.id,
+            userId: existingMsg.userId,
+            userName: existingMsg.userName,
+            content: existingMsg.content,
+            includeImage: existingMsg.includeImage,
+            imageUrl: existingMsg.imageUrl,
+            profilePictureUrl: existingMsg.profilePictureUrl,
+            badgeProgress: existingMsg.badgeProgress,
+            createdAt: existingMsg.createdAt,
+            esPropio: existingMsg.esPropio,
+            isPending: false,
+          );
+        }
+      }
+      _messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     });
 
-    // Actualizar caché
     await _savePendingMessages();
 
     if (kDebugMode) {
       print('🧹 Limpieza completada:');
       print('   - Mensajes enviados: ${sentMessageIds.length}');
-      print('   - Mensajes pendientes restantes: ${_pendingMessages.length}');
+      print('   - Mensajes pendientes restantes: ${_getPendingMessagesCount()}');
       print('   - Mensajes en UI: ${_messages.length}');
     }
 
@@ -795,16 +849,14 @@ class _ForumScreenState extends State<ForumScreen> {
           ),
         );
 
-        // Si todos los mensajes se enviaron exitosamente, ocultar la barra después de un momento
-        if (_pendingMessages.isEmpty) {
-          // Actualizar el timestamp del último mensaje para el listener
+        if (!_hasPendingMessages()) {
           if (_messages.isNotEmpty) {
             _lastMessageTimestamp = _messages.first.createdAt;
           }
 
           Timer(const Duration(seconds: 3), () {
             if (mounted) {
-              setState(() {}); // Forzar rebuild para ocultar la barra
+              setState(() {}); 
             }
           });
         }
@@ -813,8 +865,7 @@ class _ForumScreenState extends State<ForumScreen> {
       if (failedCount > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-                '$failedCount mensaje(s) fallaron. Se reintentará automáticamente.'),
+            content: Text('$failedCount mensaje(s) fallaron. Se reintentará automáticamente.'),
             backgroundColor: Colors.orange,
             duration: const Duration(seconds: 3),
           ),
@@ -827,24 +878,23 @@ class _ForumScreenState extends State<ForumScreen> {
     }
   }
 
-  // Método de prueba para verificar conexión a Firestore
   Future<bool> _testFirestoreConnection() async {
     if (kDebugMode) {
       print('🧪 Probando conexión a Firestore...');
     }
 
     try {
-      final testDoc = await _firestore.collection('group_chat').add({
+      final testDoc = await _firestore.collection('connection_test').add({
         'test': true,
         'createdAt': Timestamp.now(),
         'userId': _currentUserId ?? 'test',
+        'purpose': 'connectivity_check',
       }).timeout(const Duration(seconds: 10));
 
       if (kDebugMode) {
         print('✅ Prueba exitosa, documento creado con ID: ${testDoc.id}');
       }
 
-      // Eliminar el documento de prueba
       await testDoc.delete();
 
       if (kDebugMode) {
@@ -860,7 +910,6 @@ class _ForumScreenState extends State<ForumScreen> {
     }
   }
 
-  // Enviar mensaje a Firestore
   Future<void> _sendMessageToFirestore(Message message) async {
     if (kDebugMode) {
       print('🔄 Intentando enviar mensaje a Firestore...');
@@ -877,8 +926,7 @@ class _ForumScreenState extends State<ForumScreen> {
         'userId': message.userId,
         'user_name': message.userName,
         'content': message.content,
-        'createdAt':
-            Timestamp.now(), // Usar timestamp actual en lugar del mensaje
+        'createdAt': message.createdAt,
         'includeImage': message.includeImage,
         'imageUrl': message.imageUrl,
       });
@@ -891,11 +939,10 @@ class _ForumScreenState extends State<ForumScreen> {
         print('❌ Error enviando mensaje a Firestore: $e');
         print('   - Stack trace: ${e.toString()}');
       }
-      rethrow; // Re-lanzar el error para que sea manejado por el caller
+      rethrow;
     }
   }
 
-  // Cargar mensajes pendientes desde SharedPreferences
   Future<void> _loadPendingMessages() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -906,89 +953,154 @@ class _ForumScreenState extends State<ForumScreen> {
         print('   - Mensajes en caché: ${pendingMessagesJson.length}');
       }
 
-      _pendingMessages = pendingMessagesJson
+      final pendingMessages = pendingMessagesJson
           .map((jsonString) => Message.fromJson(jsonDecode(jsonString)))
           .toList();
 
+      final validPendingMessages = pendingMessages
+          .where((msg) => msg.content.trim().isNotEmpty && msg.userId.isNotEmpty)
+          .toList();
+      
+      validPendingMessages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      setState(() {
+        for (final pendingMsg in validPendingMessages) {
+          final exists = _messages.any((existingMsg) => 
+            existingMsg.id == pendingMsg.id || 
+            (existingMsg.userId == pendingMsg.userId &&
+             existingMsg.content.trim() == pendingMsg.content.trim() &&
+             (existingMsg.createdAt.seconds - pendingMsg.createdAt.seconds).abs() <= 5)
+          );
+          
+          if (!exists) {
+            _messages.add(pendingMsg);
+          } else if (kDebugMode) {
+            print('   - Mensaje duplicado ignorado: "${pendingMsg.content}"');
+          }
+        }
+        
+        _messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      });
+
       if (kDebugMode) {
-        print('✅ Cargados ${_pendingMessages.length} mensajes pendientes');
-        for (int i = 0; i < _pendingMessages.length; i++) {
-          final msg = _pendingMessages[i];
-          print('   Mensaje $i: "${msg.content}" - Creado: ${msg.createdAt}');
+        print('✅ Cargados ${validPendingMessages.length} mensajes pendientes válidos');
+        for (int i = 0; i < validPendingMessages.length && i < 5; i++) {
+          final msg = validPendingMessages[i];
+          print('   Mensaje $i: "${msg.content}" - ID: ${msg.id} - Timestamp: ${msg.createdAt}');
         }
       }
     } catch (e) {
       if (kDebugMode) {
         print('❌ Error cargando mensajes pendientes: $e');
       }
-      _pendingMessages = [];
     }
   }
 
-  // Guardar mensajes pendientes en SharedPreferences
   Future<void> _savePendingMessages() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final pendingMessagesJson = _pendingMessages
+      final pendingMessages = _getPendingMessages();
+      
+      final validPendingMessages = pendingMessages
+          .where((msg) => msg.content.trim().isNotEmpty && msg.userId.isNotEmpty)
+          .toList();
+      
+      validPendingMessages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      
+      final pendingMessagesJson = validPendingMessages
           .map((message) => jsonEncode(message.toJson()))
           .toList();
 
       await prefs.setStringList('pending_messages', pendingMessagesJson);
 
       if (kDebugMode) {
-        print(
-            'Guardados ${_pendingMessages.length} mensajes pendientes en caché');
+        print('💾 Guardados ${validPendingMessages.length} mensajes pendientes válidos en caché');
+        for (int i = 0; i < validPendingMessages.length && i < 3; i++) {
+          final msg = validPendingMessages[i];
+          print('   Guardado $i: "${msg.content}" - ID: ${msg.id}');
+        }
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error guardando mensajes pendientes: $e');
+        print('❌ Error guardando mensajes pendientes: $e');
       }
     }
   }
 
-  // Agregar mensajes pendientes a la UI
-  void _addPendingMessagesToUI() {
-    if (_pendingMessages.isNotEmpty && _currentUserId != null) {
-      // Filtrar solo mensajes del usuario actual
-      final userPendingMessages = _pendingMessages
-          .where((msg) => msg.userId == _currentUserId)
-          .toList();
-
+  Future<void> _cleanupPendingMessages() async {
+    try {
+      final now = DateTime.now();
+      const maxAge = Duration(hours: 24);
+      
+      final initialCount = _messages.length;
+      final initialPendingCount = _getPendingMessagesCount();
+      
       setState(() {
-        // Evitar duplicados - solo agregar mensajes que no estén ya en la UI
-        for (final pendingMsg in userPendingMessages) {
-          final existsInUI = _messages.any((msg) => msg.id == pendingMsg.id);
-          if (!existsInUI) {
-            _messages.insert(0, pendingMsg);
+        _messages.removeWhere((msg) {
+          if (!msg.isPending) return false;
+          
+          final messageAge = now.difference(msg.createdAt.toDate());
+          if (messageAge > maxAge) {
+            if (kDebugMode) {
+              print('🗑️ Removiendo mensaje pendiente antiguo: "${msg.content}" (${messageAge.inHours}h)');
+            }
+            return true;
           }
-        }
-
-        // Ordenar mensajes por timestamp (más recientes primero)
-        _messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          
+          if (msg.content.trim().isEmpty || msg.userId.isEmpty || msg.userName.isEmpty) {
+            if (kDebugMode) {
+              print('🗑️ Removiendo mensaje pendiente inválido: "${msg.content}"');
+            }
+            return true;
+          }
+          
+          return false;
+        });
       });
-
+      
+      final removedMessages = initialCount - _messages.length;
+      final finalPendingCount = _getPendingMessagesCount();
+      
+      if (removedMessages > 0) {
+        await _savePendingMessages();
+        if (kDebugMode) {
+          print('🧹 Limpieza completada:');
+          print('   - Mensajes removidos: $removedMessages');
+          print('   - Pendientes antes: $initialPendingCount');
+          print('   - Pendientes después: $finalPendingCount');
+        }
+      }
+    } catch (e) {
       if (kDebugMode) {
-        print(
-            'Agregados ${userPendingMessages.length} mensajes pendientes a la UI');
+        print('❌ Error limpiando mensajes pendientes: $e');
       }
     }
   }
 
-  // Inicializar el stream de mensajes optimizado
+  void _addPendingMessagesToUI() {
+    if (kDebugMode) {
+      print('ℹ️ Los mensajes pendientes ya están integrados en _messages');
+    }
+  }
+
   void _initializeMessageStream() {
     if (!_hasInternet) {
-      // Sin internet, solo mostrar mensajes del cache local
       if (kDebugMode) {
         print('Sin conexión: usando mensajes del cache local');
       }
       return;
     }
 
-    _loadInitialMessages();
-    _setupNewMessageListener();
+    _loadInitialMessages().then((_) {
+      // Solo configurar el listener DESPUÉS de cargar los mensajes iniciales
+      if (kDebugMode) {
+        print('🔗 Configurando listener después de cargar mensajes iniciales');
+        print('   - _lastMessageTimestamp: $_lastMessageTimestamp');
+      }
+      _setupNewMessageListener();
+    });
   }
 
-  // Cargar mensajes iniciales (últimos 150)
   Future<void> _loadInitialMessages() async {
     if (_currentUserId == null || !_hasInternet) return;
 
@@ -1001,168 +1113,341 @@ class _ForumScreenState extends State<ForumScreen> {
           .limit(_messageLimit)
           .get();
 
-      final messages = querySnapshot.docs
-          .map((doc) => Message.fromFirestore(doc, _currentUserId!))
-          .toList();
+      final messages = <Message>[];
+      for (final doc in querySnapshot.docs) {
+        try {
+          final message = Message.fromFirestore(doc, _currentUserId!);
+          messages.add(message);
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Documento ignorado en carga inicial: $e');
+            print('   - Documento ID: ${doc.id}');
+          }
+        }
+      }
 
-      // Cargar datos de perfil para todos los mensajes
+      // Guardar el último documento para paginación
+      if (querySnapshot.docs.isNotEmpty) {
+        _lastDocument = querySnapshot.docs.last;
+        _hasMoreMessages = querySnapshot.docs.length == _messageLimit;
+      } else {
+        _hasMoreMessages = false;
+      }
+
       final messagesWithProfile = <Message>[];
       for (final message in messages) {
-        final messageWithProfile = await Message.loadUserProfileData(message);
-        messagesWithProfile.add(messageWithProfile);
+        final existsInCache = _messages.any((existingMsg) =>
+          existingMsg.id == message.id ||
+          (existingMsg.userId == message.userId &&
+           existingMsg.content.trim() == message.content.trim() &&
+           (existingMsg.createdAt.seconds - message.createdAt.seconds).abs() <= 10)
+        );
+
+        if (!existsInCache) {
+          final messageWithProfile = await Message.loadUserProfileData(message);
+          messagesWithProfile.add(messageWithProfile);
+        } else if (kDebugMode) {
+          print('🔄 Mensaje ya existe en caché: "${message.content.substring(0, message.content.length > 20 ? 20 : message.content.length)}..."');
+        }
       }
 
       setState(() {
-        _messages = messagesWithProfile;
-        _lastMessageTimestamp =
-            messages.isNotEmpty ? messages.first.createdAt : null;
+        _messages.addAll(messagesWithProfile);
+        _messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        _lastMessageTimestamp = _messages.isNotEmpty ? _messages.first.createdAt : null;
         _isLoadingHistory = false;
       });
+
+      if (kDebugMode) {
+        print('✅ Cargados ${messagesWithProfile.length} mensajes iniciales desde Firestore');
+        print('   - Total mensajes en UI: ${_messages.length}');
+        print('   - Tiene más mensajes: $_hasMoreMessages');
+        print('   - Mensajes pendientes: ${_getPendingMessagesCount()}');
+      }
     } catch (e) {
       if (kDebugMode) {
-        print('Error cargando mensajes iniciales: $e');
+        print('❌ Error cargando mensajes iniciales: $e');
       }
       setState(() => _isLoadingHistory = false);
     }
   }
 
-  // Configurar listener solo para mensajes nuevos
+  Future<void> _loadMoreMessages() async {
+    if (_currentUserId == null || !_hasInternet || _lastDocument == null || !_hasMoreMessages) {
+      return;
+    }
+
+    setState(() => _isLoadingMore = true);
+
+    try {
+      final querySnapshot = await _firestore
+          .collection('group_chat')
+          .orderBy('createdAt', descending: true)
+          .startAfterDocument(_lastDocument!)
+          .limit(_loadMoreLimit)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        setState(() {
+          _hasMoreMessages = false;
+          _isLoadingMore = false;
+        });
+        return;
+      }
+
+      final messages = <Message>[];
+      for (final doc in querySnapshot.docs) {
+        try {
+          final message = Message.fromFirestore(doc, _currentUserId!);
+          messages.add(message);
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Documento ignorado en carga adicional: $e');
+          }
+        }
+      }
+
+      // Actualizar el último documento para la siguiente carga
+      _lastDocument = querySnapshot.docs.last;
+      _hasMoreMessages = querySnapshot.docs.length == _loadMoreLimit;
+
+      final messagesWithProfile = <Message>[];
+      for (final message in messages) {
+        final existsInMessages = _messages.any((existingMsg) =>
+          existingMsg.id == message.id ||
+          (existingMsg.userId == message.userId &&
+           existingMsg.content.trim() == message.content.trim() &&
+           (existingMsg.createdAt.seconds - message.createdAt.seconds).abs() <= 10)
+        );
+
+        if (!existsInMessages) {
+          final messageWithProfile = await Message.loadUserProfileData(message);
+          messagesWithProfile.add(messageWithProfile);
+        }
+      }
+
+      setState(() {
+        _messages.addAll(messagesWithProfile);
+        _messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        _isLoadingMore = false;
+      });
+
+      if (kDebugMode) {
+        print('✅ Cargados ${messagesWithProfile.length} mensajes adicionales');
+        print('   - Total mensajes en UI: ${_messages.length}');
+        print('   - Tiene más mensajes: $_hasMoreMessages');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error cargando más mensajes: $e');
+      }
+      setState(() => _isLoadingMore = false);
+    }
+  }
+
   void _setupNewMessageListener() {
-    if (_currentUserId == null || !_hasInternet) return;
+    if (_currentUserId == null || !_hasInternet) {
+      if (kDebugMode) {
+        print('❌ No se puede configurar listener - UserId: $_currentUserId, Internet: $_hasInternet');
+      }
+      return;
+    }
+
+    // Cancelar listener anterior si existe
+    if (_messageSubscription != null) {
+      if (kDebugMode) {
+        print('🔄 Cancelando listener anterior antes de crear uno nuevo');
+      }
+      _messageSubscription?.cancel();
+      _messageSubscription = null;
+    }
+
+    if (kDebugMode) {
+      print('🔗 Configurando nuevo listener de mensajes...');
+      print('   - Usuario ID: $_currentUserId');
+      print('   - Último timestamp: $_lastMessageTimestamp');
+      print('   - Internet disponible: $_hasInternet');
+    }
+
+    // Si no hay timestamp de referencia, usar uno ligeramente en el pasado
+    // para evitar perder mensajes que lleguen justo al momento de configurar el listener
+    final referenceTimestamp = _lastMessageTimestamp ?? 
+        Timestamp.fromDate(DateTime.now().subtract(const Duration(seconds: 10)));
+
+    if (kDebugMode) {
+      print('   - Timestamp de referencia: $referenceTimestamp');
+    }
 
     _messageSubscription = _firestore
         .collection('group_chat')
         .orderBy('createdAt', descending: false)
-        .where('createdAt',
-            isGreaterThan: _lastMessageTimestamp ?? Timestamp.now())
+        .where('createdAt', isGreaterThan: referenceTimestamp)
         .snapshots()
         .listen((snapshot) async {
+      if (kDebugMode) {
+        print('📨 Snapshot recibido: ${snapshot.docChanges.length} cambios');
+      }
+      
       for (final change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
-          final message = Message.fromFirestore(change.doc, _currentUserId!);
+          try {
+            final message = Message.fromFirestore(change.doc, _currentUserId!);
 
-          // Validar que el mensaje tenga contenido válido
-          if (message.content.trim().isEmpty) {
-            if (kDebugMode) {
-              print('⚠️ Mensaje vacío ignorado del stream');
-            }
-            continue;
-          }
-
-          // Verificar duplicados
-          bool shouldAdd = true;
-
-          // Para evitar duplicados, verificar si ya existe un mensaje con el mismo ID o
-          // mismo userId, contenido y timestamp muy cercano
-          final isDuplicate = _messages.any((existingMsg) {
-            // Mismo ID
-            if (existingMsg.id == message.id) return true;
-
-            // Mismo contenido, usuario y timestamp muy cercano (máximo 30 segundos de diferencia)
-            // Esto evita duplicados cuando un mensaje pendiente se envía y vuelve desde Firestore
-            if (existingMsg.userId == message.userId &&
-                existingMsg.content.trim() == message.content.trim() &&
-                (existingMsg.createdAt.seconds - message.createdAt.seconds)
-                        .abs() <=
-                    30) {
+            if (message.content.trim().isEmpty) {
               if (kDebugMode) {
-                print('🔍 Posible duplicado detectado:');
-                print('   - Contenido: "${message.content}"');
-                print('   - Existente isPending: ${existingMsg.isPending}');
-                print('   - Nuevo es de Firestore: ${!message.isPending}');
-                print(
-                    '   - Diferencia tiempo: ${(existingMsg.createdAt.seconds - message.createdAt.seconds).abs()} segundos');
+                print('⚠️ Mensaje vacío ignorado del stream - ID: ${message.id}');
               }
+              continue;
+            }
 
-              // Si el mensaje existente es pendiente y el nuevo viene de Firestore,
-              // actualizar el existente en lugar de crear uno nuevo
-              if (existingMsg.isPending && !message.isPending) {
-                // Actualizar el mensaje existente con los datos de Firestore
-                setState(() {
-                  final index = _messages.indexOf(existingMsg);
-                  if (index != -1) {
-                    _messages[index] = Message(
-                      id: message.id,
-                      userId: message.userId,
-                      userName: message.userName,
-                      content: message.content,
-                      includeImage: message.includeImage,
-                      imageUrl: message.imageUrl,
-                      profilePictureUrl: existingMsg.profilePictureUrl,
-                      badgeProgress: existingMsg.badgeProgress,
-                      createdAt: message.createdAt,
-                      esPropio: message.esPropio,
-                      isPending: false,
-                    );
+            if (message.userId.isEmpty) {
+              if (kDebugMode) {
+                print('⚠️ Mensaje sin userId ignorado del stream - ID: ${message.id}');
+              }
+              continue;
+            }
 
-                    if (kDebugMode) {
-                      print(
-                          '✅ Mensaje pendiente actualizado con datos de Firestore');
+            bool shouldAdd = true;
+
+            final isDuplicate = _messages.any((existingMsg) {
+              if (existingMsg.id == message.id) return true;
+
+              if (existingMsg.userId == message.userId &&
+                  existingMsg.content.trim() == message.content.trim() &&
+                  (existingMsg.createdAt.seconds - message.createdAt.seconds).abs() <= 10) {
+                
+                if (kDebugMode) {
+                  print('🔍 Posible duplicado detectado:');
+                  print('   - Contenido: "${message.content}"');
+                  print('   - Existente ID: ${existingMsg.id} (isPending: ${existingMsg.isPending})');
+                  print('   - Nuevo ID: ${message.id} (isPending: ${message.isPending})');
+                  print('   - Diferencia tiempo: ${(existingMsg.createdAt.seconds - message.createdAt.seconds).abs()} segundos');
+                }
+
+                if (existingMsg.isPending && !message.isPending) {
+                  setState(() {
+                    final index = _messages.indexOf(existingMsg);
+                    if (index != -1) {
+                      _messages[index] = Message(
+                        id: message.id,
+                        userId: message.userId,
+                        userName: message.userName,
+                        content: message.content,
+                        includeImage: message.includeImage,
+                        imageUrl: message.imageUrl,
+                        profilePictureUrl: existingMsg.profilePictureUrl,
+                        badgeProgress: existingMsg.badgeProgress,
+                        createdAt: message.createdAt,
+                        esPropio: message.esPropio,
+                        isPending: false,
+                      );
+
+                      if (kDebugMode) {
+                        print('✅ Mensaje pendiente actualizado con ID oficial de Firestore');
+                      }
+                      
+                      _savePendingMessages();
                     }
+                  });
+                } else if (!existingMsg.isPending && !message.isPending) {
+                  if (kDebugMode) {
+                    print('🔄 Duplicado de Firestore ignorado');
                   }
-                });
+                }
+
+                return true;
               }
 
-              return true;
-            }
-
-            return false;
-          });
-
-          shouldAdd = !isDuplicate;
-
-          if (shouldAdd) {
-            if (kDebugMode) {
-              print(
-                  '📥 Nuevo mensaje del stream: ${message.content.substring(0, message.content.length > 20 ? 20 : message.content.length)}...');
-              print('   - ID: ${message.id}');
-              print('   - Usuario: ${message.userName}');
-              print('   - UserID: ${message.userId}');
-              print('   - Es propio: ${message.esPropio}');
-              print('   - Contenido completo: "${message.content}"');
-
-              if (message.userName == "Usuario Desconocido") {
-                print(
-                    '⚠️ ADVERTENCIA: Mensaje con "Usuario Desconocido" detectado');
-              }
-            }
-
-            final messageWithProfile =
-                await Message.loadUserProfileData(message);
-
-            setState(() {
-              _messages.insert(0, messageWithProfile); // Insertar al principio
-              _lastMessageTimestamp = message.createdAt;
-
-              // Mantener solo los últimos mensajes para evitar memoria excesiva
-              if (_messages.length > _messageLimit * 2) {
-                _messages = _messages.take(_messageLimit).toList();
-              }
+              return false;
             });
-          } else {
+
+            shouldAdd = !isDuplicate;
+
+            if (shouldAdd) {
+              if (kDebugMode) {
+                print('📥 Nuevo mensaje del stream: ${message.content.substring(0, message.content.length > 20 ? 20 : message.content.length)}...');
+                print('   - De usuario: ${message.userName} (${message.userId})');
+                print('   - Timestamp: ${message.createdAt}');
+                print('   - Es propio: ${message.esPropio}');
+              }
+
+              final messageWithProfile = await Message.loadUserProfileData(message);
+
+              setState(() {
+                _messages.insert(0, messageWithProfile);
+                _lastMessageTimestamp = message.createdAt;
+
+                // Limpiar exceso de mensajes solo si no estamos cargando más
+                if (!_isLoadingMore && _messages.length > _messageLimit * 3) {
+                  final removedCount = _messages.length - _messageLimit * 2;
+                  _messages.removeRange(_messageLimit * 2, _messages.length);
+                  
+                  // Si removemos mensajes, podríamos tener más mensajes disponibles
+                  _hasMoreMessages = true;
+                  
+                  if (kDebugMode) {
+                    print('🧹 Removidos $removedCount mensajes antiguos para mantener rendimiento');
+                  }
+                }
+              });
+            } else {
+              if (kDebugMode) {
+                print('🔄 Mensaje duplicado ignorado: ${message.content.substring(0, message.content.length > 10 ? 10 : message.content.length)}...');
+              }
+            }
+          } catch (e) {
             if (kDebugMode) {
-              print(
-                  '🔄 Mensaje duplicado ignorado: ${message.content.substring(0, message.content.length > 10 ? 10 : message.content.length)}...');
+              print('⚠️ Documento ignorado del stream: $e');
+              print('   - Documento ID: ${change.doc.id}');
             }
           }
         }
       }
     }, onError: (error) {
       if (kDebugMode) {
-        print('Error en stream de mensajes: $error');
+        print('❌ Error en stream de mensajes: $error');
+        print('🔄 Reintentando configurar listener...');
       }
-      // Si hay error de conexión, verificar estado de internet
+      
+      // Marcar como desconectado y verificar conexión
+      setState(() {
+        _hasInternet = false;
+      });
+      
+      // Cancelar el listener actual
+      _messageSubscription?.cancel();
+      _messageSubscription = null;
+      
+      // Verificar conexión y reintentar
       _checkInternetConnection();
     });
+
+    if (kDebugMode) {
+      print('✅ Listener de mensajes configurado exitosamente');
+    }
   }
 
   void _sendMessage() async {
-    // Si no hay texto y no hay imagen, no envía nada
-    if (_messageController.text.trim().isEmpty && _image == null) {
+    final messageContent = _messageController.text.trim();
+    
+    if (messageContent.isEmpty && _image == null) {
+      if (kDebugMode) {
+        print('⚠️ Intento de enviar mensaje vacío sin imagen - cancelado');
+      }
+      return;
+    }
+    
+    if (_image == null && messageContent.isEmpty) {
+      if (kDebugMode) {
+        print('⚠️ Intento de enviar mensaje de texto vacío - cancelado');
+      }
       return;
     }
 
     if (_currentUserId == null || _currentUserName == null) {
+      if (kDebugMode) {
+        print('❌ Usuario no identificado - UserId: $_currentUserId, UserName: $_currentUserName');
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text(
@@ -1171,10 +1456,24 @@ class _ForumScreenState extends State<ForumScreen> {
       return;
     }
 
-    // Verificar conexión antes de enviar
+    if (_currentUserName!.isEmpty || _currentUserName == "Usuario Desconocido") {
+      if (kDebugMode) {
+        print('⚠️ Nombre de usuario inválido: "$_currentUserName" - reobteniendo datos del usuario');
+      }
+      _getCurrentUser();
+      
+      if (_currentUserName == null || _currentUserName!.isEmpty || _currentUserName == "Usuario Desconocido") {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'Error en datos del usuario. Intenta cerrar sesión y volver a iniciar.')),
+        );
+        return;
+      }
+    }
+
     await _checkInternetConnection();
 
-    // Si no hay conexión y hay imagen, mostrar error y cancelar
     if (!_hasInternet && _image != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1187,61 +1486,102 @@ class _ForumScreenState extends State<ForumScreen> {
       return;
     }
 
+    // Validación adicional del tamaño de imagen antes de enviar
+    if (_image != null) {
+      try {
+        final fileSizeInBytes = await _image!.length();
+        const maxSizeInBytes = 8 * 1024 * 1024; // 8 MB en bytes
+        
+        if (fileSizeInBytes > maxSizeInBytes) {
+          final fileSizeInMB = (fileSizeInBytes / (1024 * 1024)).toStringAsFixed(1);
+          
+          if (kDebugMode) {
+            print('❌ Intento de enviar imagen muy grande: ${fileSizeInMB}MB');
+          }
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'La imagen es muy grande (${fileSizeInMB}MB). '
+                'Máximo permitido: 8MB. Por favor, selecciona una imagen más pequeña.',
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+              action: SnackBarAction(
+                label: 'Cambiar imagen',
+                textColor: Colors.white,
+                onPressed: () {
+                  _quitarImagenSeleccionada();
+                  Future.delayed(const Duration(milliseconds: 300), () {
+                    _seleccionarGaleria();
+                  });
+                },
+              ),
+            ),
+          );
+          return;
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('❌ Error verificando tamaño de imagen antes de enviar: $e');
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error procesando la imagen: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+    }
+
     setState(() => _isSending = true);
 
-    final messageContent = _messageController.text.trim();
-    final tempImage = _image; // Capturar imagen temporal
+    final tempImage = _image;
 
-    // OPTIMISTIC UPDATE: Agregar el mensaje inmediatamente a la UI
+    final tempId = 'temp_${_currentUserId}_${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecond}';
+    final messageTimestamp = Timestamp.now();
+    
     final tempMessage = Message(
-      id: 'temp_${DateTime.now().millisecondsSinceEpoch}', // ID temporal
+      id: tempId,
       userId: _currentUserId!,
       userName: _currentUserName!,
       content: messageContent,
       includeImage: tempImage != null,
-      imageUrl: null, // Se actualizará cuando se suba la imagen
-      profilePictureUrl: null, // Se cargará después
-      badgeProgress: "0/13", // Se cargará después
-      createdAt: Timestamp.now(),
+      imageUrl: null,
+      profilePictureUrl: null,
+      badgeProgress: "0/13",
+      createdAt: messageTimestamp,
       esPropio: true,
-      isPending: !_hasInternet, // Marcar como pendiente si no hay conexión
+      isPending: !_hasInternet,
     );
 
-    // Cargar datos de perfil
-    final tempMessageWithProfile =
-        await Message.loadUserProfileData(tempMessage);
+    final tempMessageWithProfile = await Message.loadUserProfileData(tempMessage);
 
     setState(() {
-      _messages.insert(
-          0, tempMessageWithProfile); // Agregar inmediatamente a la UI
+      _messages.insert(0, tempMessageWithProfile);
       _messageController.clear();
-      _image = null; // Limpiar imagen inmediatamente
-      _isSending = false; // Quitar indicador de envío inmediatamente
+      _image = null;
+      _isSending = false;
     });
 
     if (!_hasInternet) {
-      // Sin conexión: agregar a mensajes pendientes
-      _pendingMessages.add(tempMessageWithProfile);
-      await _savePendingMessages(); // Guardar en caché
+      await _savePendingMessages();
 
-      // if (mounted) {
-      //   ScaffoldMessenger.of(context).showSnackBar(
-      //     const SnackBar(
-      //       content: Text('Sin conexión. El mensaje se enviará cuando se recupere la conexión.'),
-      //       backgroundColor: Colors.orange,
-      //       duration: Duration(seconds: 3),
-      //     ),
-      //   );
-      // }
+      if (kDebugMode) {
+        print('💾 Mensaje guardado sin conexión - ID: ${tempMessage.id}');
+      }
+
       return;
     }
 
     try {
-      String? imageUrl; // Puede ser nulo si no hay imagen
+      String? imageUrl;
       bool hasImage = false;
       if (tempImage != null) {
-        final photoId =
-            FirebaseFirestore.instance.collection('group_chat').doc().id;
+        final photoId = FirebaseFirestore.instance.collection('group_chat').doc().id;
         final ref = FirebaseStorage.instance
             .ref()
             .child('group_chat/$_currentUserId/$photoId.jpg');
@@ -1249,7 +1589,6 @@ class _ForumScreenState extends State<ForumScreen> {
         imageUrl = await ref.getDownloadURL();
         hasImage = true;
 
-        // Actualizar el mensaje temporal con la URL de la imagen
         final updatedMessage = tempMessageWithProfile.copyWithProfileData(
           tempMessageWithProfile.profilePictureUrl,
           tempMessageWithProfile.badgeProgress,
@@ -1274,7 +1613,6 @@ class _ForumScreenState extends State<ForumScreen> {
         });
       }
 
-      // Enviar a Firestore usando el método helper
       final finalMessage = Message(
         id: tempMessage.id,
         userId: _currentUserId!,
@@ -1284,17 +1622,35 @@ class _ForumScreenState extends State<ForumScreen> {
         imageUrl: imageUrl,
         profilePictureUrl: tempMessageWithProfile.profilePictureUrl,
         badgeProgress: tempMessageWithProfile.badgeProgress,
-        createdAt: Timestamp.now(),
+        createdAt: messageTimestamp,
         esPropio: true,
       );
 
       await _sendMessageToFirestore(finalMessage);
+      
+      setState(() {
+        final index = _messages.indexWhere((m) => m.id == tempMessage.id);
+        if (index != -1) {
+          _messages[index] = Message(
+            id: tempMessage.id,
+            userId: finalMessage.userId,
+            userName: finalMessage.userName,
+            content: finalMessage.content,
+            includeImage: finalMessage.includeImage,
+            imageUrl: finalMessage.imageUrl,
+            profilePictureUrl: finalMessage.profilePictureUrl,
+            badgeProgress: finalMessage.badgeProgress,
+            createdAt: finalMessage.createdAt,
+            esPropio: finalMessage.esPropio,
+            isPending: false,
+          );
+        }
+      });
     } catch (e) {
-      // Si hay error, remover el mensaje temporal y mostrar error
       setState(() {
         _messages.removeWhere((m) => m.id == tempMessage.id);
-        _messageController.text = messageContent; // Restaurar texto
-        _image = tempImage; // Restaurar imagen
+        _messageController.text = messageContent;
+        _image = tempImage;
       });
 
       if (mounted) {
@@ -1304,16 +1660,194 @@ class _ForumScreenState extends State<ForumScreen> {
       }
     }
   }
-  // --- Fin de lógica para enviar mensajes ---
 
   Future<void> _seleccionarGaleria() async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+
     if (pickedFile != null) {
-      setState(() {
-        _image = File(pickedFile.path);
-      });
+      try {
+        final file = File(pickedFile.path);
+        final fileSizeInBytes = await file.length();
+        const maxSizeInBytes = 8 * 1024 * 1024; // 8 MB en bytes
+        
+        if (kDebugMode) {
+          final fileSizeInMB = (fileSizeInBytes / (1024 * 1024)).toStringAsFixed(2);
+          print('📷 Imagen seleccionada:');
+          print('   - Tamaño: ${fileSizeInMB}MB');
+          print('   - Límite: 8MB');
+          print('   - Válida: ${fileSizeInBytes <= maxSizeInBytes}');
+        }
+        
+        if (fileSizeInBytes <= maxSizeInBytes) {
+          setState(() {
+            _image = file;
+          });
+          
+          // Mostrar información del tamaño de la imagen seleccionada
+          final fileSizeInMB = (fileSizeInBytes / (1024 * 1024)).toStringAsFixed(1);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Imagen seleccionada: ${fileSizeInMB}MB'),
+                backgroundColor: AppColors.buttonGreen2,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        } else {
+          // La imagen es muy grande
+          final fileSizeInMB = (fileSizeInBytes / (1024 * 1024)).toStringAsFixed(1);
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'La imagen es muy grande (${fileSizeInMB}MB).\n'
+                  'El tamaño máximo permitido es 8MB.\n'
+                  'Por favor, selecciona una imagen más pequeña.',
+                ),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+          
+          // Opcional: Mostrar dialog con opciones para el usuario
+          if (mounted) {
+            _showImageSizeDialog(fileSizeInMB);
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('❌ Error verificando tamaño de imagen: $e');
+        }
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al procesar la imagen: $e'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
     }
+  }
+
+  /// Muestra un dialog informativo cuando la imagen es muy grande
+  void _showImageSizeDialog(String fileSizeInMB) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.darkTeal,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+            side: const BorderSide(color: AppColors.seaGreen, width: 2),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+              SizedBox(width: 10),
+              Text(
+                'Imagen muy grande',
+                style: TextStyle(
+                  color: AppColors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'La imagen seleccionada tiene un tamaño de ${fileSizeInMB}MB.',
+                style: const TextStyle(
+                  color: AppColors.white,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Límite máximo: 8MB',
+                style: TextStyle(
+                  color: AppColors.seaGreen,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 15),
+              const Text(
+                'Consejos para reducir el tamaño:',
+                style: TextStyle(
+                  color: AppColors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '• Comprime la imagen antes de seleccionarla\n'
+                '• Usa una resolución más baja\n'
+                '• Convierte a formato JPG si es PNG\n'
+                '• Toma una nueva foto con menor calidad',
+                style: TextStyle(
+                  color: AppColors.white,
+                  fontSize: 14,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.seaGreen,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              ),
+              child: const Text(
+                'Entendido',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                // Permitir seleccionar otra imagen inmediatamente
+                Future.delayed(const Duration(milliseconds: 300), () {
+                  _seleccionarGaleria();
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.seaGreen,
+                foregroundColor: AppColors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'Seleccionar otra',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _quitarImagenSeleccionada() {
@@ -1332,14 +1866,7 @@ class _ForumScreenState extends State<ForumScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              // Banner de AdMob
-              if (_isBannerAdReady && _bannerAd != null)
-                Container(
-                  alignment: Alignment.center,
-                  width: _bannerAd!.size.width.toDouble(),
-                  height: _bannerAd!.size.height.toDouble(),
-                  child: AdWidget(ad: _bannerAd!),
-                ),
+              buildBanner(margin: const EdgeInsets.symmetric(vertical: 8)),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -1356,10 +1883,7 @@ class _ForumScreenState extends State<ForumScreen> {
                   ],
                 ),
               ),
-              // Indicador de estado de conexión
-              if (!_hasInternet ||
-                  _pendingMessages.isNotEmpty ||
-                  _isSendingPendingMessages)
+              if (!_hasInternet || _hasPendingMessages() || _isSendingPendingMessages)
                 Container(
                   width: double.infinity,
                   padding:
@@ -1367,7 +1891,7 @@ class _ForumScreenState extends State<ForumScreen> {
                   color: !_hasInternet
                       ? Colors.red
                       : (_isSendingPendingMessages ||
-                              _pendingMessages.isNotEmpty)
+                              _hasPendingMessages())
                           ? Colors.orange
                           : AppColors.buttonGreen2,
                   child: Row(
@@ -1376,7 +1900,7 @@ class _ForumScreenState extends State<ForumScreen> {
                         !_hasInternet
                             ? Icons.cloud_off
                             : (_isSendingPendingMessages ||
-                                    _pendingMessages.isNotEmpty)
+                                    _hasPendingMessages())
                                 ? Icons.cloud_upload
                                 : Icons.cloud_done,
                         color: Colors.white,
@@ -1389,8 +1913,8 @@ class _ForumScreenState extends State<ForumScreen> {
                               ? 'Sin conexión. Los mensajes se enviarán cuando se recupere la conexión.'
                               : _isSendingPendingMessages
                                   ? 'Enviando mensajes pendientes...'
-                                  : _pendingMessages.isNotEmpty
-                                      ? 'Preparando ${_pendingMessages.length} mensaje(s) para envío...'
+                                  : _hasPendingMessages()
+                                      ? 'Preparando ${_getPendingMessagesCount()} mensaje(s) para envío...'
                                       : 'Conexión restablecida',
                           style: const TextStyle(
                             color: Colors.white,
@@ -1401,7 +1925,6 @@ class _ForumScreenState extends State<ForumScreen> {
                     ],
                   ),
                 ),
-              // Lista de mensajes
               Expanded(
                 child: _isLoadingHistory
                     ? const Center(
@@ -1419,12 +1942,25 @@ class _ForumScreenState extends State<ForumScreen> {
                             ),
                           )
                         : ListView.builder(
-                            reverse:
-                                true, // Para que el chat se muestre desde abajo
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
-                            itemCount: _messages.length,
+                            controller: _scrollController,
+                            reverse: true,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            itemCount: _messages.length + (_isLoadingMore ? 1 : 0),
+                            cacheExtent: 500,
+                            addAutomaticKeepAlives: true,
+                            addRepaintBoundaries: true,
                             itemBuilder: (context, index) {
+                              // Show loading indicator at the bottom (top in reverse list)
+                              if (index == _messages.length) {
+                                return Container(
+                                  padding: const EdgeInsets.all(16),
+                                  alignment: Alignment.center,
+                                  child: const CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.textWhite),
+                                  ),
+                                );
+                              }
+
                               final message = _messages[index];
 
                               return ForoMensajeCard(
@@ -1433,9 +1969,7 @@ class _ForumScreenState extends State<ForumScreen> {
                                 userId: message.userId,
                                 hora: message.formattedTime,
                                 texto: message.content,
-                                imagen: message.includeImage
-                                    ? message.imageUrl
-                                    : null,
+                                imagen: message.includeImage ? message.imageUrl : null,
                                 profilePictureUrl: message.profilePictureUrl,
                                 badgeProgress: message.badgeProgress,
                                 isPending: message.isPending,
@@ -1444,13 +1978,10 @@ class _ForumScreenState extends State<ForumScreen> {
                           ),
               ),
 
-              if (_image !=
-                  null) // Muestra esta sección solo si hay una imagen seleccionada
+              if (_image != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8.0, vertical: 4.0),
-                  color: AppColors.slateGreen
-                      .withOpacity(0.5), // Un color de fondo sutil
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                  color: AppColors.slateGreen.withOpacity(0.5),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1548,26 +2079,81 @@ class _ForumScreenState extends State<ForumScreen> {
 
   @override
   void dispose() {
+    if (_hasPendingMessages()) {
+      _savePendingMessages().catchError((e) {
+        if (kDebugMode) {
+          print('❌ Error guardando mensajes pendientes en dispose: $e');
+        }
+      });
+    }
+    
+    WidgetsBinding.instance.removeObserver(this);
     _messageController.dispose();
-    _messageSubscription?.cancel(); // Cancelar el stream
-    _connectionCheckTimer
-        ?.cancel(); // Cancelar el timer de verificación de conexión
-    _bannerAd?.dispose(); // Limpiar el banner ad
+    _scrollController.dispose();
+    _messageSubscription?.cancel();
+    _connectionCheckTimer?.cancel();
+    disposeBanner();
 
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      if (_hasPendingMessages()) {
+        if (kDebugMode) {
+          print('📱 App pausada/cerrada, guardando ${_getPendingMessagesCount()} mensajes pendientes...');
+        }
+        _savePendingMessages().catchError((e) {
+          if (kDebugMode) {
+            print('❌ Error guardando mensajes pendientes en pausa: $e');
+          }
+        });
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      if (kDebugMode) {
+        print('📱 App resumida, verificando estado del foro...');
+        print('   - Internet: $_hasInternet');
+        print('   - Usuario ID: $_currentUserId');
+        print('   - Listener activo: ${_messageSubscription != null}');
+        print('   - Mensajes pendientes: ${_getPendingMessagesCount()}');
+      }
+      
+      // Verificar conexión y reactivar listener si es necesario
+      _checkInternetConnection().then((_) {
+        // Si hay mensajes pendientes, enviarlos
+        if (_hasInternet && _hasPendingMessages()) {
+          Timer(const Duration(seconds: 2), () {
+            _sendPendingMessages();
+          });
+        }
+        
+        // Verificar que el listener esté activo
+        if (_hasInternet && _currentUserId != null && _messageSubscription == null) {
+          if (kDebugMode) {
+            print('🔄 Reactivando listener al resumir la app');
+          }
+          Timer(const Duration(seconds: 1), () {
+            _setupNewMessageListener();
+          });
+        }
+      });
+    }
   }
 }
 
 class ForoMensajeCard extends StatelessWidget {
   final bool esPropio;
   final String usuario;
-  final String userId; // ID del usuario para el modal
+  final String userId;
   final String hora;
   final String texto;
   final String? imagen;
   final String? profilePictureUrl;
-  final String? badgeProgress; // Progreso de insignias
-  final bool isPending; // Indica si el mensaje está pendiente
+  final String? badgeProgress;
+  final bool isPending;
 
   const ForoMensajeCard({
     super.key,
@@ -1579,10 +2165,9 @@ class ForoMensajeCard extends StatelessWidget {
     this.imagen,
     this.profilePictureUrl,
     this.badgeProgress,
-    this.isPending = false, // Por defecto no está pendiente
+    this.isPending = false,
   });
 
-  // Método para mostrar imagen en pantalla completa
   static void _showFullScreenImage(BuildContext context, String imageUrl) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -1608,7 +2193,6 @@ class ForoMensajeCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Usuario y hora (tocable para mostrar perfil)
               GestureDetector(
                 onTap: () {
                   showDialog(
@@ -1629,7 +2213,7 @@ class ForoMensajeCard extends StatelessWidget {
                       radius: 16,
                       backgroundImage: profilePictureUrl != null &&
                               profilePictureUrl!.isNotEmpty
-                          ? NetworkImage(profilePictureUrl!)
+                          ? CachedNetworkImageProvider(profilePictureUrl!)
                           : null,
                       child: profilePictureUrl == null ||
                               profilePictureUrl!.isEmpty
@@ -1756,49 +2340,43 @@ class ForoMensajeCard extends StatelessWidget {
                     onTap: () => _showFullScreenImage(context, imagen!),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        imagen!,
+                      child: CachedNetworkImage(
+                        imageUrl: imagen!,
                         height: 160,
                         width: double.infinity,
                         fit: BoxFit.cover,
-                        // Mostrar un indicador de carga mientras la imagen se descarga
-                        loadingBuilder: (BuildContext context, Widget child,
-                            ImageChunkEvent? loadingProgress) {
-                          if (loadingProgress == null)
-                            return child; // Imagen cargada
-                          return Container(
-                            height: 160,
-                            width: double.infinity,
-                            color: Colors
-                                .grey[300], // Un color de fondo mientras carga
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                value: loadingProgress.expectedTotalBytes !=
-                                        null
-                                    ? loadingProgress.cumulativeBytesLoaded /
-                                        loadingProgress.expectedTotalBytes!
-                                    : null,
-                                color: AppColors.textWhite,
-                              ),
+                        // Widget de carga optimizado
+                        placeholder: (context, url) => Container(
+                          height: 160,
+                          width: double.infinity,
+                          color: Colors.grey[300],
+                          child: const Center(
+                            child: CircularProgressIndicator(
+                              color: AppColors.textWhite,
+                              strokeWidth: 2,
                             ),
-                          );
-                        },
-                        // Mostrar un widget de error si la imagen no se puede cargar
-                        errorBuilder: (BuildContext context, Object exception,
-                            StackTrace? stackTrace) {
-                          return Container(
-                            height: 160,
-                            width: double.infinity,
-                            color: Colors.grey[300],
-                            child: const Center(
-                              child: Icon(
-                                Icons.error_outline,
-                                color: Colors.red,
-                                size: 40,
-                              ),
+                          ),
+                        ),
+                        // Widget de error optimizado
+                        errorWidget: (context, url, error) => Container(
+                          height: 160,
+                          width: double.infinity,
+                          color: Colors.grey[300],
+                          child: const Center(
+                            child: Icon(
+                              Icons.error_outline,
+                              color: Colors.red,
+                              size: 40,
                             ),
-                          );
-                        },
+                          ),
+                        ),
+                        // Configuración de caché
+                        cacheKey: imagen!, // Usar la URL como clave de caché
+                        memCacheHeight: 160, // Limitar el tamaño en memoria
+                        memCacheWidth: null, // Mantener proporción
+                        maxHeightDiskCache: 400, // Tamaño máximo en disco
+                        fadeInDuration: const Duration(milliseconds: 200), // Animación suave
+                        fadeOutDuration: const Duration(milliseconds: 100),
                       ),
                     ),
                   ),
@@ -1811,7 +2389,6 @@ class ForoMensajeCard extends StatelessWidget {
   }
 }
 
-// Widget para mostrar imagen en pantalla completa
 class FullScreenImageViewer extends StatelessWidget {
   final String imageUrl;
 
@@ -1820,10 +2397,8 @@ class FullScreenImageViewer extends StatelessWidget {
     required this.imageUrl,
   });
 
-  // Método para descargar la imagen
   Future<void> _downloadImage(BuildContext context) async {
     try {
-      // Mostrar indicador de descarga
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -1832,47 +2407,36 @@ class FullScreenImageViewer extends StatelessWidget {
         ),
       );
 
-      // Solicitar permisos de almacenamiento
       if (await _requestStoragePermission()) {
-        // Descargar la imagen
         final response = await http.get(Uri.parse(imageUrl));
         if (response.statusCode == 200) {
-          // Obtener directorio para guardar
           Directory? saveDirectory;
           String displayPath;
 
           if (Platform.isAndroid) {
-            // Intentar usar DCIM primero, si falla usar el directorio de la app
             try {
-              saveDirectory =
-                  Directory('/storage/emulated/0/DCIM/BioDetect_Chat');
+              saveDirectory = Directory('/storage/emulated/0/DCIM/BioDetect_Chat');
               displayPath = 'DCIM/BioDetect_Chat';
             } catch (e) {
-              // Si falla, usar directorio de la app
               final appDir = await getExternalStorageDirectory();
               saveDirectory = Directory('${appDir?.path ?? ''}/BioDetect_Chat');
               displayPath = 'BioDetect_Chat';
             }
           } else {
-            // En iOS, usar el directorio de documentos de la app
             final appDir = await getApplicationDocumentsDirectory();
             saveDirectory = Directory('${appDir.path}/BioDetect_Chat');
             displayPath = 'BioDetect_Chat';
           }
 
-          // Crear el directorio si no existe
           if (!await saveDirectory.exists()) {
             await saveDirectory.create(recursive: true);
           }
 
-          // Generar nombre único para el archivo
           final timestamp = DateTime.now().millisecondsSinceEpoch;
           final dateTime = DateTime.now();
-          final fileName =
-              'chat_${dateTime.year}${dateTime.month.toString().padLeft(2, '0')}${dateTime.day.toString().padLeft(2, '0')}_$timestamp.jpg';
+          final fileName = 'chat_${dateTime.year}${dateTime.month.toString().padLeft(2, '0')}${dateTime.day.toString().padLeft(2, '0')}_$timestamp.jpg';
           final filePath = '${saveDirectory.path}/$fileName';
 
-          // Guardar la imagen
           final file = File(filePath);
           await file.writeAsBytes(response.bodyBytes);
 
@@ -1895,15 +2459,12 @@ class FullScreenImageViewer extends StatelessWidget {
           throw Exception('Error al descargar la imagen');
         }
       } else {
-        // Cerrar indicador de descarga
         if (context.mounted) Navigator.of(context).pop();
 
-        // Mostrar mensaje de error de permisos
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                  'Se necesitan permisos de almacenamiento para descargar la imagen'),
+              content: Text('Se necesitan permisos de almacenamiento para descargar la imagen'),
               backgroundColor: Colors.red,
               duration: Duration(seconds: 3),
             ),
@@ -1911,10 +2472,8 @@ class FullScreenImageViewer extends StatelessWidget {
         }
       }
     } catch (e) {
-      // Cerrar indicador de descarga
       if (context.mounted) Navigator.of(context).pop();
 
-      // Mostrar mensaje de error
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1927,20 +2486,16 @@ class FullScreenImageViewer extends StatelessWidget {
     }
   }
 
-  // Solicitar permisos de almacenamiento
   Future<bool> _requestStoragePermission() async {
     if (Platform.isAndroid) {
-      // Verificar permisos según la versión de Android
       PermissionStatus status;
 
-      // Para Android 11+ (API 30+)
       if (await Permission.manageExternalStorage.isRestricted == false) {
         status = await Permission.manageExternalStorage.status;
         if (!status.isGranted) {
           status = await Permission.manageExternalStorage.request();
         }
       } else {
-        // Para Android 10 y versiones anteriores
         status = await Permission.storage.status;
         if (!status.isGranted) {
           status = await Permission.storage.request();
@@ -1949,7 +2504,6 @@ class FullScreenImageViewer extends StatelessWidget {
 
       return status.isGranted;
     } else {
-      // En iOS, generalmente no necesitamos permisos adicionales para el directorio de la app
       return true;
     }
   }
@@ -1976,47 +2530,41 @@ class FullScreenImageViewer extends StatelessWidget {
           scaleEnabled: true,
           minScale: 0.5,
           maxScale: 4.0,
-          child: Image.network(
-            imageUrl,
+          child: CachedNetworkImage(
+            imageUrl: imageUrl,
             fit: BoxFit.contain,
             width: double.infinity,
             height: double.infinity,
-            loadingBuilder: (BuildContext context, Widget child,
-                ImageChunkEvent? loadingProgress) {
-              if (loadingProgress == null) return child;
-              return Center(
-                child: CircularProgressIndicator(
-                  value: loadingProgress.expectedTotalBytes != null
-                      ? loadingProgress.cumulativeBytesLoaded /
-                          loadingProgress.expectedTotalBytes!
-                      : null,
-                  color: Colors.white,
-                ),
-              );
-            },
-            errorBuilder: (BuildContext context, Object exception,
-                StackTrace? stackTrace) {
-              return const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.error_outline,
+            placeholder: (context, url) => const Center(
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 3,
+              ),
+            ),
+            errorWidget: (context, url, error) => const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    color: Colors.white,
+                    size: 64,
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Error al cargar la imagen',
+                    style: TextStyle(
                       color: Colors.white,
-                      size: 64,
+                      fontSize: 16,
                     ),
-                    SizedBox(height: 16),
-                    Text(
-                      'Error al cargar la imagen',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+                  ),
+                ],
+              ),
+            ),
+            // Para pantalla completa, permitir resolución completa
+            memCacheHeight: null,
+            memCacheWidth: null,
+            fadeInDuration: const Duration(milliseconds: 300),
           ),
         ),
       ),

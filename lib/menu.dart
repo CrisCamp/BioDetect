@@ -1,4 +1,4 @@
-import 'package:biodetect/views/notes/explorar_bitacoras_publicas_screen.dart';
+import 'package:biodetect/screens/note_screen.dart';
 import 'package:biodetect/screens/forum_screen.dart';
 import 'package:biodetect/views/registers/album_fotos.dart';
 import 'package:biodetect/screens/profile_screen.dart';
@@ -12,24 +12,67 @@ class MainMenu extends StatefulWidget {
   State<MainMenu> createState() => _MainMenuState();
 }
 
-class _MainMenuState extends State<MainMenu> {
+class _MainMenuState extends State<MainMenu> with TickerProviderStateMixin {
   int _currentIndex = 0;
-  final List<Widget> _screens = [
-    const AlbumFotos(),
-    const ForumScreen(),
-    const ExplorarBitacorasPublicasScreen(),
-    const ProfileScreen(),
-  ];
+  late PageController _pageController;
+  
+  // Lista de widgets que se mantendrán en memoria
+  late final List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _currentIndex);
+    
+    // Inicializar las pantallas una sola vez
+    _screens = [
+      const _KeepAliveWrapper(child: AlbumFotos()),
+      const _KeepAliveWrapper(child: ForumScreen()),
+      const _KeepAliveWrapper(child: BinnacleScreen()),
+      const _KeepAliveWrapper(child: ProfileScreen()),
+    ];
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onTabTapped(int index) {
+    if (index != _currentIndex) {
+      setState(() {
+        _currentIndex = index;
+      });
+      
+      // Animar suavemente a la nueva página
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundPrimary,
-      body: _screens[_currentIndex],
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        // Permitir deslizamiento horizontal entre páginas (opcional)
+        physics: const NeverScrollableScrollPhysics(), // Deshabilitar swipe si prefieres solo navegación por botones
+        children: _screens,
+      ),
       bottomNavigationBar: BottomNavigationBar(
         selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        onTap: _onTabTapped,
         backgroundColor: AppColors.backgroundNavBarsLigth,
         selectedItemColor: AppColors.selectedItemLightBottomNavBar,
         unselectedItemColor: AppColors.unselectedItemLightBottomNavBar,
@@ -56,5 +99,28 @@ class _MainMenuState extends State<MainMenu> {
         ],
       ),
     );
+  }
+}
+
+// Wrapper que mantiene vivas las páginas para evitar que se recarguen
+class _KeepAliveWrapper extends StatefulWidget {
+  final Widget child;
+  
+  const _KeepAliveWrapper({required this.child});
+
+  @override
+  State<_KeepAliveWrapper> createState() => _KeepAliveWrapperState();
+}
+
+class _KeepAliveWrapperState extends State<_KeepAliveWrapper>
+    with AutomaticKeepAliveClientMixin {
+  
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // Importante: llamar super.build()
+    return widget.child;
   }
 }
