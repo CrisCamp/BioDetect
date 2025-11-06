@@ -1154,16 +1154,30 @@ class _AlbumFotosState extends State<AlbumFotos> {
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(24),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.buttonGreen2.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: const Icon(
-                                      Icons.camera_alt_outlined,
-                                      size: 80,
-                                      color: AppColors.buttonGreen2,
+                                  GestureDetector(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(builder: (context) => const CapturaFoto()),
+                                      ).then((_) {
+                                        _loadPhotos();
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(24),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.buttonGreen2.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: AppColors.buttonGreen2.withOpacity(0.3),
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.camera_alt_outlined,
+                                        size: 80,
+                                        color: AppColors.buttonGreen2,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 24),

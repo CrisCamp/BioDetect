@@ -126,14 +126,93 @@ class _CapturaFotoState extends State<CapturaFoto> {
     }
   }
 
+  Future<bool> _validateImageSize(File imageFile) async {
+    try {
+      final fileSizeInBytes = await imageFile.length();
+      const maxSizeInBytes = 20 * 1024 * 1024; // 20 MB en bytes
+      const warningThreshold = 8 * 1024 * 1024; // 8 MB en bytes
+      
+      if (kDebugMode) {
+        final fileSizeInMB = (fileSizeInBytes / (1024 * 1024)).toStringAsFixed(2);
+        debugPrint('📷 Imagen seleccionada:');
+        debugPrint('   - Tamaño: ${fileSizeInMB}MB');
+        debugPrint('   - Límite máximo: 20MB');
+        debugPrint('   - Umbral de advertencia: 8MB');
+        debugPrint('   - Válida: ${fileSizeInBytes <= maxSizeInBytes}');
+      }
+      
+      if (fileSizeInBytes > maxSizeInBytes) {
+        // Imagen muy grande (>20MB)
+        final fileSizeInMB = (fileSizeInBytes / (1024 * 1024)).toStringAsFixed(1);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'La imagen es muy grande (${fileSizeInMB}MB).\n'
+                'El tamaño máximo permitido es 20MB.\n'
+                'Por favor, selecciona una imagen más pequeña.',
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return false;
+      } else if (fileSizeInBytes >= warningThreshold) {
+        // Imagen grande (8MB-20MB) - mostrar advertencia
+        final fileSizeInMB = (fileSizeInBytes / (1024 * 1024)).toStringAsFixed(1);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Imagen de ${fileSizeInMB}MB.\n'
+                'El análisis podría demorar un poco más de lo habitual.',
+              ),
+              backgroundColor: AppColors.warning,
+              duration: const Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return true;
+      } else {
+        // Imagen pequeña (<8MB) - sin mensaje, continuar normalmente
+        return true;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ Error verificando tamaño de imagen: $e');
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al validar la imagen: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
   Future<void> _tomarFoto() async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.camera);
     if (pickedFile != null) {
-      setState(() {
-        _image = File(pickedFile.path);
-      });
-      _getCurrentLocation();
+      final file = File(pickedFile.path);
+      
+      // Validar tamaño de imagen
+      final isValid = await _validateImageSize(file);
+      if (isValid) {
+        setState(() {
+          _image = file;
+        });
+        _getCurrentLocation();
+      }
     }
   }
 
@@ -141,10 +220,16 @@ class _CapturaFotoState extends State<CapturaFoto> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
-      setState(() {
-        _image = File(pickedFile.path);
-      });
-      _getCurrentLocation();
+      final file = File(pickedFile.path);
+      
+      // Validar tamaño de imagen
+      final isValid = await _validateImageSize(file);
+      if (isValid) {
+        setState(() {
+          _image = file;
+        });
+        _getCurrentLocation();
+      }
     }
   }
 

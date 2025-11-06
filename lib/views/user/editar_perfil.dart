@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:biodetect/themes.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:biodetect/views/user/cambiar_contrasena.dart';
@@ -99,9 +100,77 @@ class _EditarPerfilState extends State<EditarPerfil> {
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
+    
     if (picked != null) {
-      await _uploadProfileImage(picked);
+      try {
+        final file = File(picked.path);
+        final fileSizeInBytes = await file.length();
+        const maxSizeInBytes = 8 * 1024 * 1024; // 8 MB en bytes
+        
+        if (kDebugMode) {
+          final fileSizeInMB = (fileSizeInBytes / (1024 * 1024)).toStringAsFixed(2);
+          print('📷 Imagen de perfil seleccionada:');
+          print('   - Tamaño: ${fileSizeInMB}MB');
+          print('   - Límite: 8MB');
+          print('   - Válida: ${fileSizeInBytes <= maxSizeInBytes}');
+        }
+        
+        if (fileSizeInBytes <= maxSizeInBytes) {
+          // Si la imagen es válida, proceder con la subida
+          await _uploadProfileImage(picked);
+          
+          // Mostrar confirmación del tamaño
+          // final fileSizeInMB = (fileSizeInBytes / (1024 * 1024)).toStringAsFixed(1);
+          // if (mounted) {
+          //   ScaffoldMessenger.of(context).showSnackBar(
+          //     SnackBar(
+          //       content: Text('Foto de perfil actualizada: ${fileSizeInMB}MB'),
+          //       backgroundColor: AppColors.buttonGreen2,
+          //       duration: const Duration(seconds: 2),
+          //     ),
+          //   );
+          // }
+        } else {
+          // La imagen es muy grande
+          final fileSizeInMB = (fileSizeInBytes / (1024 * 1024)).toStringAsFixed(1);
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'La imagen es muy grande (${fileSizeInMB}MB).\n'
+                  'El tamaño máximo permitido es 8MB.\n'
+                  'Por favor, selecciona una imagen más pequeña.',
+                ),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+                behavior: SnackBarBehavior.floating,
+                action: SnackBarAction(
+                  label: 'Cambiar imagen',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    _pickImage(); // Permitir seleccionar otra imagen
+                  },
+                ),
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('❌ Error verificando tamaño de imagen de perfil: $e');
+        }
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al validar la imagen: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -421,11 +490,6 @@ class _EditarPerfilState extends State<EditarPerfil> {
         );
       },
     );
-    
-    // Limpiar si aún no se ha hecho
-    if (!_disposed && confirmationController.hasListeners) {
-      confirmationController.dispose();
-    }
   }
 
   Future<void> _eliminarCuentaCompleta() async {
