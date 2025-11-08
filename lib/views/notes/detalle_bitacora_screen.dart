@@ -1,13 +1,11 @@
-import 'dart:io';
 import 'package:biodetect/themes.dart';
 import 'package:biodetect/services/bitacora_service.dart';
 import 'package:biodetect/services/pdf_service.dart';
 import 'package:biodetect/views/notes/bitacora_map_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -257,7 +255,7 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
 
     try {
       final titulo = widget.bitacoraData['title'] ?? 'Sin título';
-      final fileName = 'Bitacora_${titulo.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}';
+      final fileName = 'BioDetect_${titulo.replaceAll(' ', '_')}';
       
       // Determinar qué registros usar según la opción seleccionada
       List<Map<String, dynamic>> registrosParaPdf;
@@ -1033,7 +1031,7 @@ class FullScreenImageViewer extends StatelessWidget {
     this.registroData,
   });
 
-  // Método para descargar la imagen con metadatos de bitácora
+  // Método para descargar la imagen con metadatos usando MediaStore (Android)
   Future<void> _downloadImageWithMetadata(BuildContext context) async {
     try {
       // Mostrar indicador de descarga
@@ -1045,102 +1043,48 @@ class FullScreenImageViewer extends StatelessWidget {
         ),
       );
 
-      // Solicitar permisos de almacenamiento
-      if (await _requestStoragePermission()) {
+      // Descargar la imagen
+      final response = await http.get(Uri.parse(imageUrl));
+      if (response.statusCode == 200) {
         
-        // Descargar la imagen
-        final response = await http.get(Uri.parse(imageUrl));
-        if (response.statusCode == 200) {
-          
-          // Obtener directorio para guardar
-          Directory? saveDirectory;
-          String displayPath;
-          
-          if (Platform.isAndroid) {
-            // Intentar usar DCIM primero, si falla usar el directorio de la app
-            try {
-              saveDirectory = Directory('/storage/emulated/0/DCIM/BioDetect_Bitacoras');
-              displayPath = 'DCIM/BioDetect_Bitacoras';
-            } catch (e) {
-              // Si falla, usar directorio de la app
-              final appDir = await getExternalStorageDirectory();
-              saveDirectory = Directory('${appDir?.path ?? ''}/BioDetect_Bitacoras');
-              displayPath = 'BioDetect_Bitacoras';
-            }
-          } else {
-            // En iOS, usar el directorio de documentos de la app
-            final appDir = await getApplicationDocumentsDirectory();
-            saveDirectory = Directory('${appDir.path}/BioDetect_Bitacoras');
-            displayPath = 'BioDetect_Bitacoras';
-          }
-          
-          // Crear el directorio si no existe
-          if (!await saveDirectory.exists()) {
-            await saveDirectory.create(recursive: true);
-          }
-          
-          // Generar nombre descriptivo con ID de foto
-          final photoId = registroData?['photoId'] ?? DateTime.now().millisecondsSinceEpoch.toString();
-          
-          String fileName = 'bitacora_$photoId';
-          
-          // Agregar metadatos al nombre del archivo si están disponibles
-          if (registroData != null) {
-            final clase = registroData!['class'] ?? '';
-            final orden = registroData!['taxonOrder'] ?? '';
-            
-            if (clase.isNotEmpty && orden.isNotEmpty) {
-              // Limpiar caracteres especiales para el nombre del archivo
-              final claseClean = clase.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
-              final ordenClean = orden.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
-              fileName = '${claseClean}_${ordenClean}_$fileName';
-            }
-          }
-          
-          fileName += '.jpg';
-          final filePath = '${saveDirectory.path}/$fileName';
-          
-          // Guardar la imagen
-          final file = File(filePath);
-          await file.writeAsBytes(response.bodyBytes);
-          
-          // Crear archivo de metadatos si hay información disponible
-          if (registroData != null) {
-            await _createBitacoraMetadataFile(saveDirectory.path, fileName, registroData!);
-          }
-          
-          displayPath = '$displayPath/$fileName';
-          
-          // Cerrar indicador de descarga
-          if (context.mounted) Navigator.of(context).pop();
-          
-          // Mostrar mensaje de éxito
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Imagen de bitácora y metadatos guardados en: $displayPath'),
-                backgroundColor: AppColors.buttonGreen2,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
-        } else {
-          throw Exception('Error al descargar la imagen');
+        // Generar nombre y estructura de carpetas
+        final photoId = registroData?['photoId'] ?? DateTime.now().millisecondsSinceEpoch.toString();
+        
+        // Obtener datos taxonómicos
+        final clase = registroData?['class'] ?? 'Sin_Clasificar';
+        final orden = registroData?['taxonOrder'] ?? 'Sin_Orden';
+        
+        // Limpiar caracteres especiales para nombres de archivo y carpeta
+        final claseClean = clase.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+        final ordenClean = orden.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+        
+        // Nuevo formato para bitácoras: BioDetect_Bitacora_Orden_photoId
+        final fileName = 'BioDetect_Bitacora_${ordenClean}_$photoId';
+        
+        // Usar MediaStore para guardar imagen y metadatos
+        await _saveImageToMediaStore(response.bodyBytes, fileName, claseClean);
+        
+        // Crear archivo de metadatos si hay información disponible
+        if (registroData != null) {
+          await _saveMetadataToMediaStore(fileName, registroData!, claseClean);
         }
-      } else {
-        // Cerrar indicador de descarga
+        
+        // Cerrar indicador
         if (context.mounted) Navigator.of(context).pop();
         
-        // Mostrar mensaje de error de permisos
+        // Mostrar mensaje de éxito
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Se necesitan permisos de almacenamiento para descargar la imagen'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
+            SnackBar(
+              content: Text('✅ Imagen de bitácora: Galería → BioDetect → $claseClean\n'
+                          '📄 Metadatos: Documentos → BioDetect → $claseClean'),
+              backgroundColor: AppColors.buttonGreen2,
+              duration: const Duration(seconds: 5),
             ),
           );
         }
+      } else {
+        throw Exception('Error al descargar la imagen (${response.statusCode})');
       }
     } catch (e) {
       // Cerrar indicador de descarga
@@ -1159,59 +1103,91 @@ class FullScreenImageViewer extends StatelessWidget {
     }
   }
 
-  // Crear archivo de metadatos específico para bitácoras
-  Future<void> _createBitacoraMetadataFile(String directoryPath, String imageFileName, Map<String, dynamic> registro) async {
+  // Guardar imagen en MediaStore (Android)
+  Future<void> _saveImageToMediaStore(Uint8List imageBytes, String fileName, String clase) async {
+    const platform = MethodChannel('biodetect/mediastore');
+    
     try {
-      final metadataFileName = imageFileName.replaceAll('.jpg', '_metadata.txt');
-      final metadataFile = File('$directoryPath/$metadataFileName');
-      
-      // Formatear coordenadas respetando la visibilidad
-      String coordenadas = 'No disponibles';
-      final locationVisibility = registro['locationVisibility'] ?? 'Privada';
-      
-      if (locationVisibility == 'Privada') {
-        coordenadas = 'No disponible';
-      } else if (registro['coords'] != null) {
-        final lat = registro['coords']['x'];
-        final lon = registro['coords']['y'];
-        if (lat != null && lon != null && (lat != 0 || lon != 0)) {
-          coordenadas = '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
-        }
+      await platform.invokeMethod('saveImage', {
+        'bytes': imageBytes,
+        'fileName': '$fileName.jpg',
+        'mimeType': 'image/jpeg',
+        'collection': 'DCIM/BioDetect/$clase', // Organizado por clase taxonómica
+      });
+    } catch (e) {
+      throw Exception('Error guardando imagen en MediaStore: $e');
+    }
+  }
+
+  // Guardar metadatos como documento (Android)
+  Future<void> _saveMetadataToMediaStore(String fileName, Map<String, dynamic> registro, String clase) async {
+    const platform = MethodChannel('biodetect/mediastore');
+    
+    // Generar contenido de metadatos
+    final metadata = _generateBitacoraMetadataContent(fileName, registro);
+    
+    try {
+      await platform.invokeMethod('saveDocument', {
+        'content': metadata,
+        'fileName': '${fileName}_metadata.txt',
+        'mimeType': 'text/plain',
+        'collection': 'Documents/BioDetect/$clase', // Organizado por clase taxonómica
+      });
+    } catch (e) {
+      print('Error guardando metadatos en MediaStore: $e');
+      // No lanzar excepción para que la imagen se guarde aunque fallen los metadatos
+    }
+  }
+
+  // Generar contenido de metadatos específico para bitácoras
+  String _generateBitacoraMetadataContent(String fileName, Map<String, dynamic> registro) {
+    // Formatear coordenadas respetando la visibilidad
+    String coordenadas = 'No disponibles';
+    final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+    
+    if (locationVisibility == 'Privada') {
+      coordenadas = 'No disponible';
+    } else if (registro['coords'] != null) {
+      final lat = registro['coords']['x'];
+      final lon = registro['coords']['y'];
+      if (lat != null && lon != null && (lat != 0 || lon != 0)) {
+        coordenadas = '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
       }
-      
-      // Formatear fecha de creación
-      String fechaCreacion = 'No disponible';
-      try {
-        if (registro['uploadedAt'] != null) {
-          final date = registro['uploadedAt'];
-          final dt = date is DateTime ? date : date.toDate();
-          fechaCreacion = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-        }
-      } catch (_) {}
-      
-      // Formatear fecha de modificación
-      String fechaModificacion = '';
-      try {
-        if (registro['lastModifiedAt'] != null) {
-          final date = registro['lastModifiedAt'];
-          final dt = date is DateTime ? date : date.toDate();
-          fechaModificacion = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-        }
-      } catch (_) {}
-      
-      // Formatear fecha de sincronización
-      String fechaSincronizacion = 'No sincronizado';
-      try {
-        if (registro['syncedAt'] != null) {
-          final date = registro['syncedAt'];
-          final dt = date is DateTime ? date : date.toDate();
-          fechaSincronizacion = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-        }
-      } catch (_) {}
-      
-      final metadata = '''
+    }
+    
+    // Formatear fecha de creación
+    String fechaCreacion = 'No disponible';
+    try {
+      if (registro['uploadedAt'] != null) {
+        final date = registro['uploadedAt'];
+        final dt = date is DateTime ? date : date.toDate();
+        fechaCreacion = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      }
+    } catch (_) {}
+    
+    // Formatear fecha de modificación
+    String fechaModificacion = '';
+    try {
+      if (registro['lastModifiedAt'] != null) {
+        final date = registro['lastModifiedAt'];
+        final dt = date is DateTime ? date : date.toDate();
+        fechaModificacion = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      }
+    } catch (_) {}
+    
+    // Formatear fecha de sincronización
+    String fechaSincronizacion = 'No sincronizado';
+    try {
+      if (registro['syncedAt'] != null) {
+        final date = registro['syncedAt'];
+        final dt = date is DateTime ? date : date.toDate();
+        fechaSincronizacion = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      }
+    } catch (_) {}
+    
+    return '''
 === METADATOS DE BITÁCORA BIODETECT ===
-Archivo de imagen: $imageFileName
+Archivo de imagen: $fileName.jpg
 Fecha de descarga: ${DateTime.now().toString()}
 Tipo de documento: Registro de Bitácora
 
@@ -1239,38 +1215,6 @@ Fecha de sincronización: $fechaSincronizacion
 Parte de una bitácora de investigación de biodiversidad
 Documento científico con fines de estudio y conservación
 ''';
-      
-      await metadataFile.writeAsString(metadata);
-    } catch (e) {
-      print('Error creando archivo de metadatos de bitácora: $e');
-    }
-  }
-
-  // Solicitar permisos de almacenamiento
-  Future<bool> _requestStoragePermission() async {
-    if (Platform.isAndroid) {
-      // Verificar permisos según la versión de Android
-      PermissionStatus status;
-      
-      // Para Android 11+ (API 30+)
-      if (await Permission.manageExternalStorage.isRestricted == false) {
-        status = await Permission.manageExternalStorage.status;
-        if (!status.isGranted) {
-          status = await Permission.manageExternalStorage.request();
-        }
-      } else {
-        // Para Android 10 y versiones anteriores
-        status = await Permission.storage.status;
-        if (!status.isGranted) {
-          status = await Permission.storage.request();
-        }
-      }
-      
-      return status.isGranted;
-    } else {
-      // En iOS, generalmente no necesitamos permisos adicionales para el directorio de la app
-      return true;
-    }
   }
 
   @override

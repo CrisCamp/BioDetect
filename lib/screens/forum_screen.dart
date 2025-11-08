@@ -7,12 +7,11 @@ import 'package:biodetect/services/banner_ad_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -2399,6 +2398,7 @@ class FullScreenImageViewer extends StatelessWidget {
 
   Future<void> _downloadImage(BuildContext context) async {
     try {
+      // Mostrar indicador de descarga
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -2407,73 +2407,39 @@ class FullScreenImageViewer extends StatelessWidget {
         ),
       );
 
-      if (await _requestStoragePermission()) {
-        final response = await http.get(Uri.parse(imageUrl));
-        if (response.statusCode == 200) {
-          Directory? saveDirectory;
-          String displayPath;
-
-          if (Platform.isAndroid) {
-            try {
-              saveDirectory = Directory('/storage/emulated/0/DCIM/BioDetect_Chat');
-              displayPath = 'DCIM/BioDetect_Chat';
-            } catch (e) {
-              final appDir = await getExternalStorageDirectory();
-              saveDirectory = Directory('${appDir?.path ?? ''}/BioDetect_Chat');
-              displayPath = 'BioDetect_Chat';
-            }
-          } else {
-            final appDir = await getApplicationDocumentsDirectory();
-            saveDirectory = Directory('${appDir.path}/BioDetect_Chat');
-            displayPath = 'BioDetect_Chat';
-          }
-
-          if (!await saveDirectory.exists()) {
-            await saveDirectory.create(recursive: true);
-          }
-
-          final timestamp = DateTime.now().millisecondsSinceEpoch;
-          final dateTime = DateTime.now();
-          final fileName = 'chat_${dateTime.year}${dateTime.month.toString().padLeft(2, '0')}${dateTime.day.toString().padLeft(2, '0')}_$timestamp.jpg';
-          final filePath = '${saveDirectory.path}/$fileName';
-
-          final file = File(filePath);
-          await file.writeAsBytes(response.bodyBytes);
-
-          displayPath = '$displayPath/$fileName';
-
-          // Cerrar indicador de descarga
-          if (context.mounted) Navigator.of(context).pop();
-
-          // Mostrar mensaje de éxito
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Imagen guardada en: $displayPath'),
-                backgroundColor: AppColors.buttonGreen2,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
-        } else {
-          throw Exception('Error al descargar la imagen');
-        }
-      } else {
+      // Descargar la imagen
+      final response = await http.get(Uri.parse(imageUrl));
+      if (response.statusCode == 200) {
+        
+        // Generar nombre de archivo usando timestamp
+        final photoId = DateTime.now().millisecondsSinceEpoch.toString();
+        final fileName = 'BioDetect_$photoId';
+        
+        // Usar MediaStore para guardar la imagen
+        await _saveImageToMediaStore(response.bodyBytes, fileName);
+        
+        // Cerrar indicador
         if (context.mounted) Navigator.of(context).pop();
-
+        
+        // Mostrar mensaje de éxito
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Se necesitan permisos de almacenamiento para descargar la imagen'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
+            SnackBar(
+              content: Text('✅ Imagen guardada en Galería\n'
+                          '📁 Carpeta: BioDetect → Foro'),
+              backgroundColor: AppColors.buttonGreen2,
+              duration: const Duration(seconds: 4),
             ),
           );
         }
+      } else {
+        throw Exception('Error al descargar la imagen (${response.statusCode})');
       }
     } catch (e) {
+      // Cerrar indicador de descarga
       if (context.mounted) Navigator.of(context).pop();
-
+      
+      // Mostrar mensaje de error
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2486,25 +2452,19 @@ class FullScreenImageViewer extends StatelessWidget {
     }
   }
 
-  Future<bool> _requestStoragePermission() async {
-    if (Platform.isAndroid) {
-      PermissionStatus status;
-
-      if (await Permission.manageExternalStorage.isRestricted == false) {
-        status = await Permission.manageExternalStorage.status;
-        if (!status.isGranted) {
-          status = await Permission.manageExternalStorage.request();
-        }
-      } else {
-        status = await Permission.storage.status;
-        if (!status.isGranted) {
-          status = await Permission.storage.request();
-        }
-      }
-
-      return status.isGranted;
-    } else {
-      return true;
+  // Guardar imagen en MediaStore (Android) - Solo para foro
+  Future<void> _saveImageToMediaStore(Uint8List imageBytes, String fileName) async {
+    const platform = MethodChannel('biodetect/mediastore');
+    
+    try {
+      await platform.invokeMethod('saveImage', {
+        'bytes': imageBytes,
+        'fileName': '$fileName.jpg',
+        'mimeType': 'image/jpeg',
+        'collection': 'DCIM/BioDetect/Foro', // Carpeta específica para imágenes del foro
+      });
+    } catch (e) {
+      throw Exception('Error guardando imagen en MediaStore: $e');
     }
   }
 
