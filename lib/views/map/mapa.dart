@@ -3,7 +3,6 @@ import 'package:biodetect/views/registers/detalle_registro.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:geolocator/geolocator.dart' as geolocator;
-import 'package:permission_handler/permission_handler.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:typed_data';
@@ -44,9 +43,13 @@ class _MapaIterativoScreenState extends State<MapaIterativoScreen> {
 
   Future<void> _requestLocationPermission() async {
     try {
-      PermissionStatus permission = await Permission.locationWhenInUse.request();
-      
-      if (permission.isGranted) {
+      geolocator.LocationPermission permission = await geolocator.Geolocator.checkPermission();
+      if (permission == geolocator.LocationPermission.denied) {
+        permission = await geolocator.Geolocator.requestPermission();
+      }
+
+      if (permission == geolocator.LocationPermission.whileInUse || 
+          permission == geolocator.LocationPermission.always) {
         setState(() {
           _hasLocationPermission = true;
         });

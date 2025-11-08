@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
@@ -8,7 +9,6 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class PdfService {
   static Future<Uint8List> generateBitacoraPdf({
@@ -509,89 +509,39 @@ class PdfService {
 
   static Future<String> saveDirectlyToPdf(Uint8List pdfBytes, String fileName) async {
     try {
-      // Solicitar permisos antes de guardar
-      if (Platform.isAndroid) {
-        final hasPermission = await _requestStoragePermission();
-        if (!hasPermission) {
-          throw Exception('Se necesitan permisos de almacenamiento para guardar el PDF');
-        }
+      // Solo soportar Android con MediaStore
+      if (!Platform.isAndroid) {
+        throw Exception('La descarga de PDF solo está disponible en Android');
       }
       
-      Directory? saveDirectory;
-      String displayPath;
-      
-      if (Platform.isAndroid) {
-        // Intentar usar Downloads primero
-        try {
-          saveDirectory = Directory('/storage/emulated/0/Download/BioDetect_Bitacoras');
-          displayPath = 'Descargas/BioDetect_Bitacoras';
-        } catch (e) {
-          // Si falla, usar directorio de la app
-          final appDir = await getExternalStorageDirectory();
-          saveDirectory = Directory('${appDir?.path ?? ''}/BioDetect_Bitacoras');
-          displayPath = 'BioDetect_Bitacoras';
-        }
-      } else {
-        // En iOS, usar el directorio de documentos de la app
-        final appDir = await getApplicationDocumentsDirectory();
-        saveDirectory = Directory('${appDir.path}/BioDetect_Bitacoras');
-        displayPath = 'BioDetect_Bitacoras';
-      }
-      
-      // Crear el directorio si no existe
-      if (!await saveDirectory.exists()) {
-        await saveDirectory.create(recursive: true);
-      }
-      
-      // Crear el archivo con extensión .pdf
+      // Crear el archivo con extensión .pdf si no la tiene
       final fullFileName = fileName.endsWith('.pdf') ? fileName : '$fileName.pdf';
-      final filePath = '${saveDirectory.path}/$fullFileName';
-      final file = File(filePath);
       
-      // Escribir los bytes del PDF
-      await file.writeAsBytes(pdfBytes);
-      
-      // Verificar que el archivo se creó correctamente
-      if (await file.exists()) {
-        final fileSize = await file.length();
-        if (fileSize > 0) {
-          return '$displayPath/$fullFileName';
-        } else {
-          throw Exception('El archivo se creó pero está vacío');
-        }
-      } else {
-        throw Exception('No se pudo crear el archivo');
-      }
-      
+      // Usar MediaStore para Android
+      await _savePdfToMediaStore(pdfBytes, fullFileName);
+      return 'Descargas/BioDetect/$fullFileName';
     } catch (e) {
       throw Exception('Error al guardar PDF: $e');
     }
   }
 
-  // Función privada para solicitar permisos de almacenamiento
-  static Future<bool> _requestStoragePermission() async {
-    if (Platform.isAndroid) {
-      // Verificar permisos según la versión de Android
-      PermissionStatus status;
+  // Guardar PDF usando MediaStore (Android)
+  static Future<void> _savePdfToMediaStore(Uint8List pdfBytes, String fileName) async {
+    const platform = MethodChannel('biodetect/mediastore');
+    
+    try {
+      // Convertir Uint8List a String base64 para enviar a través del MethodChannel
+      final base64Content = base64Encode(pdfBytes);
       
-      // Para Android 11+ (API 30+)
-      if (await Permission.manageExternalStorage.isRestricted == false) {
-        status = await Permission.manageExternalStorage.status;
-        if (!status.isGranted) {
-          status = await Permission.manageExternalStorage.request();
-        }
-      } else {
-        // Para Android 10 y versiones anteriores
-        status = await Permission.storage.status;
-        if (!status.isGranted) {
-          status = await Permission.storage.request();
-        }
-      }
-      
-      return status.isGranted;
-    } else {
-      // En iOS, generalmente no necesitamos permisos adicionales para el directorio de la app
-      return true;
+      await platform.invokeMethod('saveDocument', {
+        'content': base64Content,
+        'fileName': fileName,
+        'mimeType': 'application/pdf',
+        'collection': 'Download/BioDetect',
+        'isBase64': true, // Indicar que el contenido está en base64
+      });
+    } catch (e) {
+      throw Exception('Error guardando PDF en MediaStore: $e');
     }
   }
 
