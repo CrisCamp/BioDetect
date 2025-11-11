@@ -35,7 +35,7 @@ class _FotosPendientesState extends State<FotosPendientes> {
   // Reemplazar la función de SyncService por una local
   Future<void> _checkInternetConnection() async {
     try {
-      final result = await InternetAddress.lookup('google.com');
+      final result = await InternetAddress.lookup('dns.google');
       setState(() {
         _hasInternet = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
       });

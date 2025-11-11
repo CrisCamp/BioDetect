@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:biodetect/views/notes/mis_bitacoras.dart';
 import 'package:biodetect/views/user/editar_perfil.dart';
 import 'package:biodetect/views/badges/galeria_insignias.dart';
+import 'package:biodetect/services/profile_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:biodetect/themes.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -27,6 +28,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   BannerAd? _bannerAd;
   bool _isBannerAdReady = false;
 
+  // Notificador para recargar perfil cuando se eliminen registros
+  final ProfileNotifier _profileNotifier = ProfileNotifier();
+
   @override
   void initState() {
     super.initState();
@@ -36,13 +40,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _internetTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       _checkInternet();
     });
+    
+    // Escuchar cambios en el ProfileNotifier para recargar datos
+    _profileNotifier.shouldRefreshProfile.addListener(_onProfileChangeRequested);
   }
 
   @override
   void dispose() {
     _internetTimer?.cancel();
     _bannerAd?.dispose(); // Limpiar el banner ad
+    _profileNotifier.shouldRefreshProfile.removeListener(_onProfileChangeRequested);
     super.dispose();
+  }
+
+  /// Callback que se ejecuta cuando se requiere recargar el perfil
+  void _onProfileChangeRequested() {
+    if (mounted) {
+      print('🔄 ProfileScreen: Recargando datos del perfil por notificación externa');
+      setState(() {
+        _userDataFuture = _loadUserData();
+      });
+    }
   }
 
   // Método para inicializar el banner de AdMob
@@ -71,7 +89,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _checkInternet() async {
     try {
-      final result = await InternetAddress.lookup('example.com');
+      final result = await InternetAddress.lookup('dns.google');
       if (mounted) {
         setState(() {
           _hasInternet = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
@@ -163,6 +181,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'activity': activityData,
       'badges': badgesData,
     };
+  }
+
+  /// Método público para forzar la recarga de datos del perfil
+  /// Útil cuando se eliminan registros o bitácoras desde otras pantallas
+  void reloadProfileData() {
+    if (mounted) {
+      print('🔄 ProfileScreen: Recarga manual solicitada');
+      setState(() {
+        _userDataFuture = _loadUserData();
+      });
+    }
   }
 
   Future<void> _cerrarSesion(BuildContext context) async {

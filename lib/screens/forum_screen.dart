@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:biodetect/themes.dart';
 import 'package:biodetect/services/banner_ad_service.dart';
@@ -493,6 +494,8 @@ class _ForumScreenState extends State<ForumScreen> with WidgetsBindingObserver, 
   bool _hasInternet = true;
   bool _isSendingPendingMessages = false;
   Timer? _connectionCheckTimer;
+  int _characterCount = 0;
+  static const int _maxCharacters = 255;
 
   @override
   void initState() {
@@ -502,6 +505,9 @@ class _ForumScreenState extends State<ForumScreen> with WidgetsBindingObserver, 
     initializeBanner();
     _setupScrollListener();
     _initializeApp();
+    
+    // Inicializar contador de caracteres
+    _characterCount = _messageController.text.length;
   }
 
   void _setupScrollListener() {
@@ -579,7 +585,7 @@ class _ForumScreenState extends State<ForumScreen> with WidgetsBindingObserver, 
 
   Future<void> _checkInternetConnection() async {
     try {
-      final result = await InternetAddress.lookup('google.com');
+      final result = await InternetAddress.lookup('dns.google');
       bool hasConnection = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
 
       bool wasOffline = !_hasInternet;
@@ -1562,6 +1568,7 @@ class _ForumScreenState extends State<ForumScreen> with WidgetsBindingObserver, 
     setState(() {
       _messages.insert(0, tempMessageWithProfile);
       _messageController.clear();
+      _characterCount = 0; // Reset contador de caracteres
       _image = null;
       _isSending = false;
     });
@@ -1649,6 +1656,7 @@ class _ForumScreenState extends State<ForumScreen> with WidgetsBindingObserver, 
       setState(() {
         _messages.removeWhere((m) => m.id == tempMessage.id);
         _messageController.text = messageContent;
+        _characterCount = messageContent.length; // Actualizar contador
         _image = tempImage;
       });
 
@@ -1855,6 +1863,43 @@ class _ForumScreenState extends State<ForumScreen> with WidgetsBindingObserver, 
     });
   }
 
+  void _updateCharacterCount(String text) {
+    setState(() {
+      _characterCount = text.length;
+    });
+  }
+
+  // Función helper para limitar saltos de línea
+  String _limitLineBreaks(String text, int maxLines) {
+    // Contar los saltos de línea en el texto
+    final lineBreaks = '\n'.allMatches(text).length;
+    
+    if (lineBreaks <= maxLines - 1) {
+      return text; // Permitir el texto si no excede el límite (maxLines - 1 porque la primera línea no necesita \n)
+    }
+    
+    // Si excede el límite, recortar el texto hasta el último salto de línea permitido
+    final lines = text.split('\n');
+    if (lines.length > maxLines) {
+      return lines.take(maxLines).join('\n');
+    }
+    
+    return text;
+  }
+
+  // Función para manejar cambios en el mensaje con validación de saltos de línea
+  void _onMessageChanged(String value) {
+    final limitedText = _limitLineBreaks(value, 3);
+    if (limitedText != value) {
+      // Si el texto fue limitado, actualizar el controller sin triggear onChanged
+      _messageController.value = _messageController.value.copyWith(
+        text: limitedText,
+        selection: TextSelection.collapsed(offset: limitedText.length),
+      );
+    }
+    _updateCharacterCount(limitedText);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -2016,55 +2061,83 @@ class _ForumScreenState extends State<ForumScreen> with WidgetsBindingObserver, 
               Container(
                 color: AppColors.slateGreen,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                child: Row(
+                child: Column(
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.add_a_photo),
-                      // ignore: deprecated_member_use
-                      color: _hasInternet
-                          ? AppColors.white
-                          : AppColors.white.withOpacity(0.5),
-                      tooltip: _hasInternet
-                          ? 'Adjuntar imagen'
-                          : 'Sin conexión - Solo mensajes de texto',
-                      onPressed: (_isSending || !_hasInternet)
-                          ? null
-                          : _seleccionarGaleria,
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: _messageController,
-                        style: const TextStyle(color: AppColors.white),
-                        decoration: InputDecoration(
-                          hintText: 'Escribe un mensaje...',
-                          hintStyle: const TextStyle(color: AppColors.white),
-                          filled: true,
-                          fillColor: Colors.transparent,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.add_a_photo),
+                          // ignore: deprecated_member_use
+                          color: _hasInternet
+                              ? AppColors.white
+                              : AppColors.white.withOpacity(0.5),
+                          tooltip: _hasInternet
+                              ? 'Adjuntar imagen'
+                              : 'Sin conexión - Solo mensajes de texto',
+                          onPressed: (_isSending || !_hasInternet)
+                              ? null
+                              : _seleccionarGaleria,
                         ),
-                        onSubmitted: (_) => (_isSending ||
-                                (_messageController.text.trim().isEmpty &&
-                                    _image == null))
-                            ? null
-                            : _sendMessage(),
-                        minLines: 1,
-                        maxLines: 5,
-                      ),
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            style: const TextStyle(color: AppColors.white),
+                            maxLength: _maxCharacters,
+                            onChanged: _onMessageChanged,
+                            decoration: InputDecoration(
+                              hintText: 'Escribe un mensaje...',
+                              hintStyle: const TextStyle(color: AppColors.white),
+                              filled: true,
+                              fillColor: Colors.transparent,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 8),
+                              counterText: '', // Ocultar el contador por defecto
+                            ),
+                            onSubmitted: (_) => (_isSending ||
+                                    (_messageController.text.trim().isEmpty &&
+                                        _image == null))
+                                ? null
+                                : _sendMessage(),
+                            minLines: 1,
+                            maxLines: 3,
+                          ),
+                        ),
+                        IconButton(
+                          icon: _isSending
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: AppColors.white))
+                              : const Icon(Icons.send),
+                          color: AppColors.white,
+                          onPressed: _isSending ? null : _sendMessage,
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      icon: _isSending
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: AppColors.white))
-                          : const Icon(Icons.send),
-                      color: AppColors.white,
-                      onPressed: _isSending ? null : _sendMessage,
+                    // Contador de caracteres personalizado
+                    Padding(
+                      padding: const EdgeInsets.only(right: 16, bottom: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            '$_characterCount/$_maxCharacters',
+                            style: TextStyle(
+                              color: _characterCount > _maxCharacters * 0.8
+                                  ? _characterCount >= _maxCharacters
+                                      ? Colors.red
+                                      : Colors.orange
+                                  : AppColors.white.withOpacity(0.6),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -2396,26 +2469,131 @@ class FullScreenImageViewer extends StatelessWidget {
     required this.imageUrl,
   });
 
+  // Verificar conexión a internet
+  Future<bool> _checkInternetConnection() async {
+    try {
+      final result = await InternetAddress.lookup('dns.google');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _downloadImage(BuildContext context) async {
     try {
-      // Mostrar indicador de descarga
+      // VALIDACIÓN 1: Verificar conexión a internet antes de iniciar la descarga
+      print('🔍 Verificando conexión a internet...');
+      final hasInternet = await _checkInternetConnection();
+      
+      if (!hasInternet) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.wifi_off, color: Colors.white),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Sin conexión a internet. Verifica tu conexión e inténtalo de nuevo.',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.warning,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Mostrar indicador de descarga con información detallada
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(color: Colors.white),
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.deepGreen),
+                strokeWidth: 3.0,
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Descargando imagen del foro...',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Verificando conexión y descargando archivo\nEsto puede tomar unos momentos',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                  height: 1.4,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.wifi,
+                    size: 16,
+                    color: Colors.green[600],
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Conexión verificada',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.green[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       );
 
-      // Descargar la imagen
-      final response = await http.get(Uri.parse(imageUrl));
+      print('🌐 Iniciando descarga de imagen del foro desde: $imageUrl');
+      
+      // DESCARGA CON TIMEOUT Y VALIDACIÓN DE CONEXIÓN
+      final response = await http.get(
+        Uri.parse(imageUrl),
+      ).timeout(
+        const Duration(seconds: 30), // Timeout de 30 segundos
+        onTimeout: () {
+          throw TimeoutException('La descarga tardó demasiado tiempo. Verifica tu conexión a internet.', const Duration(seconds: 30));
+        },
+      );
+
       if (response.statusCode == 200) {
+        print('✅ Descarga exitosa. Tamaño: ${response.bodyBytes.length} bytes');
         
-        // Generar nombre de archivo usando timestamp
-        final photoId = DateTime.now().millisecondsSinceEpoch.toString();
-        final fileName = 'BioDetect_$photoId';
+        // VALIDACIÓN 2: Verificar que los datos descargados no estén vacíos
+        if (response.bodyBytes.isEmpty) {
+          throw Exception('La imagen descargada está vacía. Verifica tu conexión e inténtalo de nuevo.');
+        }
         
-        // Usar MediaStore para guardar la imagen
+        // Generar nombre único para imagen del foro
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final fileName = 'BioDetect_Foro_$timestamp';
+        
+        print('💾 Guardando imagen del foro como: $fileName');
+        
+        // Usar MediaStore para guardar imagen
         await _saveImageToMediaStore(response.bodyBytes, fileName);
         
         // Cerrar indicador
@@ -2424,28 +2602,154 @@ class FullScreenImageViewer extends StatelessWidget {
         // Mostrar mensaje de éxito
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✅ Imagen guardada en Galería\n'
-                          '📁 Carpeta: BioDetect → Foro'),
+            const SnackBar(
+              content: Text('✅ Imagen del foro guardada en Galería → BioDetect → Foro'),
               backgroundColor: AppColors.buttonGreen2,
-              duration: const Duration(seconds: 4),
+              duration: Duration(seconds: 4),
             ),
           );
         }
+      } else if (response.statusCode == 404) {
+        throw Exception('La imagen no se encontró en el servidor (Error 404).');
+      } else if (response.statusCode >= 500) {
+        throw Exception('Error del servidor (${response.statusCode}). Inténtalo más tarde.');
       } else {
-        throw Exception('Error al descargar la imagen (${response.statusCode})');
+        throw Exception('Error al descargar la imagen (Código ${response.statusCode}). Verifica tu conexión.');
       }
-    } catch (e) {
-      // Cerrar indicador de descarga
+    } on TimeoutException catch (_) {
+      // Error específico de timeout
+      print('⏰ Timeout en descarga de imagen del foro');
       if (context.mounted) Navigator.of(context).pop();
       
-      // Mostrar mensaje de error
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.access_time, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'La descarga tardó demasiado tiempo. Verifica tu conexión a internet e inténtalo de nuevo.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.warning,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    } on SocketException catch (_) {
+      // Error específico de conexión de red
+      print('🌐 Error de conexión de red');
+      if (context.mounted) Navigator.of(context).pop();
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.wifi_off, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Sin conexión a internet. Verifica tu conexión e inténtalo de nuevo.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.warning,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } on FormatException catch (_) {
+      // Error de formato de datos
+      print('📄 Error de formato en la respuesta');
+      if (context.mounted) Navigator.of(context).pop();
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'La imagen tiene un formato inválido. Por favor reporta este problema.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      // Manejo de otros errores con mensajes específicos
+      print('❌ Error en descarga del foro: $e');
+      if (context.mounted) Navigator.of(context).pop();
+      
+      String errorMessage = 'Error inesperado al descargar la imagen.';
+      Color backgroundColor = Colors.red;
+      IconData errorIcon = Icons.error_outline;
+      
+      // Analizar el tipo de error para proporcionar mensajes específicos
+      final errorString = e.toString().toLowerCase();
+      
+      if (errorString.contains('connection') || errorString.contains('network') || errorString.contains('internet')) {
+        errorMessage = 'Problema de conexión a internet. Verifica tu conexión e inténtalo de nuevo.';
+        backgroundColor = AppColors.warning;
+        errorIcon = Icons.wifi_off;
+      } else if (errorString.contains('404')) {
+        errorMessage = 'La imagen no se encontró en el servidor.';
+        backgroundColor = AppColors.warning;
+        errorIcon = Icons.image_not_supported;
+      } else if (errorString.contains('500') || errorString.contains('server')) {
+        errorMessage = 'Error del servidor. Inténtalo más tarde.';
+        backgroundColor = AppColors.warning;
+        errorIcon = Icons.cloud_off;
+      } else if (errorString.contains('permission') || errorString.contains('storage')) {
+        errorMessage = 'Error al guardar la imagen. Verifica los permisos de almacenamiento.';
+        backgroundColor = Colors.orange;
+        errorIcon = Icons.folder_off;
+      } else if (errorString.contains('space') || errorString.contains('full')) {
+        errorMessage = 'No hay suficiente espacio de almacenamiento.';
+        backgroundColor = Colors.orange;
+        errorIcon = Icons.storage;
+      } else {
+        // Error genérico con información útil
+        errorMessage = 'Error al descargar: ${e.toString().length > 100 ? e.toString().substring(0, 100) + "..." : e.toString()}';
+      }
+      
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al descargar la imagen: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
+            content: Row(
+              children: [
+                Icon(errorIcon, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    errorMessage,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: backgroundColor,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Reintentar',
+              textColor: Colors.white,
+              onPressed: () => _downloadImage(context),
+            ),
           ),
         );
       }
