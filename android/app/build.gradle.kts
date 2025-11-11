@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -5,19 +7,23 @@ plugins {
     id("com.google.gms.google-services")
 }
 
-// Agregar estas líneas para Mapbox
-import java.util.Properties
-import java.io.FileInputStream
-
 val localProperties = Properties()
 val localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
     localPropertiesFile.inputStream().use { localProperties.load(it) }
 }
 
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+val hasKeystore = keystorePropertiesFile.exists()
+
+if (hasKeystore) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+}
+
 android {
-    namespace = "com.example.biodetect"
-    compileSdk = flutter.compileSdkVersion
+    namespace = "com.biodetect.mobile"
+    compileSdk = 35
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -29,30 +35,43 @@ android {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
-    // Agregar esta sección para habilitar buildConfig
     buildFeatures {
         buildConfig = true
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.biodetect"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 23 // <-- CAMBIA ESTE VALOR A 23
-        targetSdk = flutter.targetSdkVersion
+        applicationId = "com.biodetect.mobile"
+        minSdk = 23
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        
-        // Agregar esta línea para Mapbox
+
         buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"${localProperties.getProperty("MAPBOX_ACCESS_TOKEN") ?: ""}\"")
     }
 
+    if (hasKeystore) {
+        signingConfigs {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (hasKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
@@ -62,9 +81,10 @@ flutter {
 }
 
 dependencies {
-    implementation(platform("com.google.firebase:firebase-bom:33.15.0"))
+    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-storage")
+    implementation("com.google.android.gms:play-services-ads:24.6.0")
 }

@@ -84,8 +84,8 @@ class _ListaRegistrosState extends State<ListaRegistros> {
         
         // Para registros offline, la fecha está en 'createdAt' como timestamp
         String fecha = '';
-        if (registro['verificationDate'] != null) {
-          final date = registro['verificationDate'];
+        if (registro['lastModifiedAt'] != null) {
+          final date = registro['lastModifiedAt'];
           fecha = (date is DateTime ? date : date.toDate()).toString().toLowerCase();
         } else if (registro['createdAt'] != null) {
           final timestamp = registro['createdAt'] as int;
@@ -128,16 +128,16 @@ class _ListaRegistrosState extends State<ListaRegistros> {
     DateTime? fechaB;
 
     // Obtener fecha de A
-    if (a['verificationDate'] != null) {
-      final date = a['verificationDate'];
+    if (a['lastModifiedAt'] != null) {
+      final date = a['lastModifiedAt'];
       fechaA = date is DateTime ? date : date.toDate();
     } else if (a['createdAt'] != null) {
       fechaA = DateTime.fromMillisecondsSinceEpoch(a['createdAt'] as int);
     }
 
     // Obtener fecha de B
-    if (b['verificationDate'] != null) {
-      final date = b['verificationDate'];
+    if (b['lastModifiedAt'] != null) {
+      final date = b['lastModifiedAt'];
       fechaB = date is DateTime ? date : date.toDate();
     } else if (b['createdAt'] != null) {
       fechaB = DateTime.fromMillisecondsSinceEpoch(b['createdAt'] as int);
@@ -151,8 +151,8 @@ class _ListaRegistrosState extends State<ListaRegistros> {
   }
 
   String _formatearFecha(Map<String, dynamic> registro) {
-    if (registro['verificationDate'] != null) {
-      final date = registro['verificationDate'];
+    if (registro['lastModifiedAt'] != null) {
+      final date = registro['lastModifiedAt'];
       final dt = date is DateTime ? date : date.toDate();
       return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
     } else if (registro['createdAt'] != null) {
@@ -160,6 +160,27 @@ class _ListaRegistrosState extends State<ListaRegistros> {
       return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
     }
     return 'Sin fecha';
+  }
+
+  // Método para construir el indicador de sincronización individual
+  Widget _buildSyncIndicator(Map<String, dynamic> registro) {
+    final syncedAt = registro['syncedAt'];
+    
+    if (syncedAt != null) {
+      // El registro está sincronizado
+      return Icon(
+        Icons.cloud_done,
+        color: AppColors.buttonGreen2,
+        size: 18,
+      );
+    } else {
+      // El registro no está sincronizado
+      return Icon(
+        Icons.cloud_off,
+        color: AppColors.textPaleGreen,
+        size: 18,
+      );
+    }
   }
 
   Widget _buildRegistroTile(Map<String, dynamic> registro) {
@@ -286,6 +307,9 @@ class _ListaRegistrosState extends State<ListaRegistros> {
                   ],
                 ),
               ),
+              // Indicador de sincronización individual
+              _buildSyncIndicator(registro),
+              const SizedBox(width: 8),
               const Icon(
                 Icons.arrow_forward_ios,
                 color: AppColors.textPaleGreen,
@@ -302,9 +326,9 @@ class _ListaRegistrosState extends State<ListaRegistros> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary,
         child: SafeArea(
           child: Column(
             children: [

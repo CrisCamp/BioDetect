@@ -130,9 +130,9 @@ class _SeleccionarRegistrosScreenState extends State<SeleccionarRegistrosScreen>
     
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary,
         child: SafeArea(
           child: Column(
             children: [

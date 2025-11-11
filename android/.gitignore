@@ -12,3 +12,12 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# PROTEGER ARCHIVOS SENSIBLES
+*.keystore
+*.jks
+android/key.properties
+CREDENCIALES_*.txt
+
+# Firebase config (opcional, algunos prefieren subirlo)
+# android/app/google-services.json

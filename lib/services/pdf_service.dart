@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
@@ -177,7 +178,7 @@ class PdfService {
                         ),
                       ),
                       pw.Text(
-                        _formatDate(registro['verificationDate']),
+                        _formatDate(registro['lastModifiedAt']),
                         style: pw.TextStyle(
                           font: fontData,
                           fontSize: 12,
@@ -254,7 +255,28 @@ class PdfService {
                       _buildInfoRow('Orden:', registro['taxonOrder'] ?? 'No especificado', fontData, fontBold),
                       _buildInfoRow('Clase:', registro['class'] ?? 'No especificada', fontData, fontBold),
                       _buildInfoRow('Hábitat:', registro['habitat'] ?? 'No especificado', fontData, fontBold),
-                      _buildInfoRow('Coordenadas:', _formatCoords(registro), fontData, fontBold),
+                      // Coordenadas con enlace a Google Maps o mensaje de privacidad
+                      () {
+                        final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+                        final coordsData = _getCoordsWithGoogleMapsUrl(registro);
+                        
+                        if (locationVisibility == 'Privada') {
+                          // Mostrar mensaje de ubicación privada
+                          return _buildInfoRow('Coordenadas:', 'No disponible', fontData, fontBold);
+                        } else if (coordsData != null) {
+                          // Mostrar coordenadas con enlace
+                          return _buildInfoRowWithLink(
+                            'Coordenadas:', 
+                            coordsData['displayText']!, 
+                            coordsData['url']!, 
+                            fontData, 
+                            fontBold
+                          );
+                        } else {
+                          // No hay coordenadas disponibles
+                          return _buildInfoRow('Coordenadas:', 'Sin coordenadas', fontData, fontBold);
+                        }
+                      }(),
                     ],
                   ),
                 ),
@@ -385,6 +407,72 @@ class PdfService {
     );
   }
 
+  // Método especial para construir fila con enlace clickeable
+  static pw.Widget _buildInfoRowWithLink(String label, String displayText, String url, pw.Font fontData, pw.Font fontBold) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 6),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: 100,
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(
+                font: fontBold,
+                fontSize: 12,
+                color: PdfColors.black,
+              ),
+            ),
+          ),
+          pw.Expanded(
+            child: pw.UrlLink(
+              destination: url,
+              child: pw.Text(
+                displayText,
+                style: pw.TextStyle(
+                  font: fontData,
+                  fontSize: 12,
+                  color: PdfColors.blue,
+                  decoration: pw.TextDecoration.underline,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Método para obtener coordenadas con URL de Google Maps respetando visibilidad
+  static Map<String, String>? _getCoordsWithGoogleMapsUrl(Map<String, dynamic> registro) {
+    // Verificar la visibilidad de la ubicación - por defecto privada si no existe
+    final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+    
+    // Si es privada, no devolver coordenadas
+    if (locationVisibility == 'Privada') {
+      return null;
+    }
+    
+    // Si es pública, verificar si hay coordenadas válidas
+    if (registro['coords'] == null) return null;
+    
+    final lat = registro['coords']['x'];
+    final lon = registro['coords']['y'];
+    
+    if (lat == null || lon == null || (lat == 0 && lon == 0)) {
+      return null;
+    }
+    
+    final displayText = '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
+    final googleMapsUrl = 'https://maps.google.com/maps?q=${lat.toStringAsFixed(6)},${lon.toStringAsFixed(6)}';
+    
+    return {
+      'displayText': displayText,
+      'url': googleMapsUrl,
+    };
+  }
+
   static String _formatDate(dynamic date) {
     if (date == null) return 'Sin fecha';
     
@@ -394,19 +482,6 @@ class PdfService {
     } catch (e) {
       return 'Sin fecha';
     }
-  }
-
-  static String _formatCoords(Map<String, dynamic> registro) {
-    if (registro['coords'] == null) return 'Sin coordenadas';
-    
-    final lat = registro['coords']['x'];
-    final lon = registro['coords']['y'];
-    
-    if (lat == null || lon == null || (lat == 0 && lon == 0)) {
-      return 'Sin coordenadas';
-    }
-    
-    return '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
   }
 
   static Future<void> previewPdf(Uint8List pdfBytes, String fileName) async {
@@ -429,6 +504,44 @@ class PdfService {
       );
     } catch (e) {
       throw Exception('Error al compartir PDF: $e');
+    }
+  }
+
+  static Future<String> saveDirectlyToPdf(Uint8List pdfBytes, String fileName) async {
+    try {
+      // Solo soportar Android con MediaStore
+      if (!Platform.isAndroid) {
+        throw Exception('La descarga de PDF solo está disponible en Android');
+      }
+      
+      // Crear el archivo con extensión .pdf si no la tiene
+      final fullFileName = fileName.endsWith('.pdf') ? fileName : '$fileName.pdf';
+      
+      // Usar MediaStore para Android
+      await _savePdfToMediaStore(pdfBytes, fullFileName);
+      return 'Descargas/BioDetect/$fullFileName';
+    } catch (e) {
+      throw Exception('Error al guardar PDF: $e');
+    }
+  }
+
+  // Guardar PDF usando MediaStore (Android)
+  static Future<void> _savePdfToMediaStore(Uint8List pdfBytes, String fileName) async {
+    const platform = MethodChannel('biodetect/mediastore');
+    
+    try {
+      // Convertir Uint8List a String base64 para enviar a través del MethodChannel
+      final base64Content = base64Encode(pdfBytes);
+      
+      await platform.invokeMethod('saveDocument', {
+        'content': base64Content,
+        'fileName': fileName,
+        'mimeType': 'application/pdf',
+        'collection': 'Download/BioDetect',
+        'isBase64': true, // Indicar que el contenido está en base64
+      });
+    } catch (e) {
+      throw Exception('Error guardando PDF en MediaStore: $e');
     }
   }
 

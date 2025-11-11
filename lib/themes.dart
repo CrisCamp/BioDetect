@@ -42,57 +42,48 @@ class AppColors {
   static const Color warningDark = Color(0xFFFF0000);
   static const Color caution = Color(0xFFFFD166);
 
-  // ========== MODO OSCURO ==========
-  static const Color backgroundDarkPrimary = navyBlue;
-  static const Color backgroundDarkSecondary = pineGreen;
-  static const Gradient backgroundDarkGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [
-      backgroundDarkPrimary,
-      backgroundDarkSecondary,
-    ],
-  );
-  static const Color backgroundNavBarsDark = blueDark;
-  static const Color selectedItemDarkBottomNavBar = aquaBlue;
-  static const Color unselectedItemDarkBottomNavBar = white;
+  // ========== FONDO PRINCIPAL - COLOR SÓLIDO ==========
+  static const Color backgroundPrimary = deepGreen; // Verde oscuro sólido para TODOS los fondos
+  
+  static const Color backgroundNavBarsLigth = Color(0xFF2A4A3A); // Verde medio más claro
+  static const Color selectedItemLightBottomNavBar = Color(0xFF7CB342); // Verde lima
+  static const Color unselectedItemLightBottomNavBar = Color(0xFFB8C5BC); // Gris verdoso claro
 
-  // ========== MODO CLARO ==========
-  static const Color backgroundLightPrimary = deepGreen;
-  static const Color backgroundLightSecondary = paleGreen;
-  static const Gradient backgroundLightGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [
-      backgroundLightPrimary,
-      backgroundLightSecondary,
-    ],
-  );
-  static const Color backgroundNavBarsLigth = darkTeal;
-  static const Color selectedItemLightBottomNavBar = skyBlue;
-  static const Color unselectedItemLightBottomNavBar = white;
+  // ========== BOTONES (ACTUALIZADOS) ==========
+  static const Color buttonBlue1 = Color(0xFF2196F3); // Azul más brillante
+  static const Color buttonBlue2 = Color(0xFF1976D2);
+  static const Color buttonBlue3 = Color(0xFF42A5F5);
+  static const Color buttonGreen1 = Color(0xFF4CAF50); // Verde más brillante
+  static const Color buttonGreen2 = Color(0xFF66BB6A);
+  static const Color buttonGreen3 = Color(0xFF81C784);
+  static const Color buttonBrown1 = Color(0xFF8D6E63);
+  static const Color buttonBrown2 = Color(0xFFA1887F);
+  static const Color buttonBrown3 = Color(0xFFBCAAA4);
 
-  // ========== BOTONES ==========
-  static const Color buttonBlue1 = blueNormal;
-  static const Color buttonBlue2 = steelBlue;
-  static const Color buttonBlue3 = blueLight;
-  static const Color buttonGreen1 = forestGreen;
-  static const Color buttonGreen2 = mintGreen;
-  static const Color buttonGreen3 = pineGreen;
-  static const Color buttonBrown1 = brownDark1;
-  static const Color buttonBrown2 = brownMedium;
-  static const Color buttonBrown3 = brownLight1;
-
-  // ========== TEXTOS ==========
+  // ========== TEXTOS (ACTUALIZADOS) ==========
   static const Color textBlack = black;
   static const Color textWhite = white;
   static const Color textGraphite = graphite;
   static const Color textSlateGrey = slateGrey;
-  static const Color textBlueNormal = blueNormal;
-  static const Color textAquaBlue = aquaBlue;
-  static const Color textSand = sand;
-  static const Color textPaleGreen = paleGreen;
+  static const Color textBlueNormal = Color(0xFF89C2EA); 
+  static const Color textAquaBlue = Color(0xFF4DD0E1);
+  static const Color textSand = Color(0xFFE8D5C4);
+  static const Color textPaleGreen = Color(0xFFC8E6C9);
 
-  static const Color backgroundCard = slateGreen;
+  // ========== CARDS Y COMPONENTES (ACTUALIZADOS) ==========
+  static const Color backgroundCard = Color(0xFF2D4A3A);
+  static const Color backgroundCardLight = Color(0xFF3E5B4A);
+  static const Color borderColor = Color(0xFF4CAF50);
+  static const Color surfaceColor = Color(0xFF354A3F);
+  
+  // ========== COLORES ESPECÍFICOS PARA INPUTS (MEJORADOS - MÁS CLAROS) ==========
+  static const Color inputBackground = Color(0xFF5A7C6A);
+  static const Color inputBorder = Color(0xFF81C784);
+  static const Color inputBorderFocused = Color(0xFF66BB6A);
+  static const Color inputLabel = Color(0xFFA5D6A7);
+  static const Color inputHint = textWhite;
 
+  // ========== BOTÓN ESPECIAL PARA SELECCIONAR ==========
+  static const Color buttonSelect = textBlueNormal;
+  static const Color buttonSelectBackground = skyBlue;
 }

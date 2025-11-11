@@ -24,7 +24,7 @@ class NotificacionLogroScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.deepGreen,
+      backgroundColor: AppColors.backgroundPrimary,
       body: Center(
         child: SingleChildScrollView(
           child: Column(

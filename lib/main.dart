@@ -4,11 +4,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:biodetect/menu.dart';
 import 'package:biodetect/views/session/inicio_sesion.dart';
+import 'package:biodetect/themes.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Inicializar AdMob
+  await MobileAds.instance.initialize();
   
   // Configurar Mapbox access token
   const String mapboxAccessToken = "pk.eyJ1IjoiYmlvZGV0ZWN0YXBwIiwiYSI6ImNtZjAyMnE1YTBpaXYydHByaTR3dm9xZjkifQ.wrMFQYEPE_iWQnezMPPbwQ";
@@ -37,6 +42,11 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.green,
         visualDensity: VisualDensity.adaptivePlatformDensity,
+        scaffoldBackgroundColor: AppColors.backgroundPrimary,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: AppColors.backgroundNavBarsLigth,
+          foregroundColor: AppColors.textWhite,
+        ),
       ),
       home: const AuthWrapper(),
     );
@@ -84,9 +94,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
     // Mostrar loading mientras verificamos auto-login
     if (_isCheckingAutoLogin) {
       return const Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.backgroundPrimary,
         body: Center(
-          child: CircularProgressIndicator(color: Colors.green),
+          child: CircularProgressIndicator(color: AppColors.buttonGreen1),
         ),
       );
     }
@@ -96,9 +106,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-            backgroundColor: Colors.white,
+            backgroundColor: AppColors.backgroundPrimary,
             body: Center(
-              child: CircularProgressIndicator(color: Colors.green),
+              child: CircularProgressIndicator(color: AppColors.buttonGreen1),
             ),
           );
         }

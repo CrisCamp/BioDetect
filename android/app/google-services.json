@@ -1,41 +1,65 @@
 {
   "project_info": {
-    "project_number": "957544639048",
-    "project_id": "biodetect-4fc3b",
-    "storage_bucket": "biodetect-4fc3b.firebasestorage.app"
+    "project_number": "290002364028",
+    "project_id": "biodetect-28e5b",
+    "storage_bucket": "biodetect-28e5b.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:957544639048:android:553b35cfb775f7c983467d",
+        "mobilesdk_app_id": "1:290002364028:android:b2e3e0c925707aabba8bf9",
         "android_client_info": {
-          "package_name": "com.example.biodetect"
+          "package_name": "com.biodetect.mobile"
         }
       },
       "oauth_client": [
         {
-          "client_id": "957544639048-jsik4d55aako0hiffqinmla39988mvsa.apps.googleusercontent.com",
+          "client_id": "290002364028-510m5kriojdtgv8h9eijom9e4a4c075c.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.example.biodetect",
-            "certificate_hash": "cb3841c96b0255c482ddf60aac57f61d380f52c3"
+            "package_name": "com.biodetect.mobile",
+            "certificate_hash": "69487b9c0740861961d9b8f38a683a41993c8a26"
           }
         },
         {
-          "client_id": "957544639048-dadfvovgbcmugcd87sksjs4g11mrup6s.apps.googleusercontent.com",
+          "client_id": "290002364028-dpbcof1g2955toj0dfbto04stv5s54jc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.biodetect.mobile",
+            "certificate_hash": "006f92adf4ba7b1d8eef9c27d6fb7208919bf182"
+          }
+        },
+        {
+          "client_id": "290002364028-g22bn8admah9pn2jojf31ns168amvovf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.biodetect.mobile",
+            "certificate_hash": "f5aa39d5ab35f12faa518ab9c9ef5442ad4c799e"
+          }
+        },
+        {
+          "client_id": "290002364028-hadslumb60k2qgbp53e5a196gva3kigd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.biodetect.mobile",
+            "certificate_hash": "3271c9ad35fcceba78bc0d0c23e7ca4dc0f5ffc2"
+          }
+        },
+        {
+          "client_id": "290002364028-reuvr9d785jdns32ttsssvt5j8c5nqb1.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyB3fl_eVDXZq1SY9fqzJWDuj56ATd5294s"
+          "current_key": "AIzaSyBNy3KKR6tFPRupNAaXrHcB7uFk_dLM6aQ"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "957544639048-dadfvovgbcmugcd87sksjs4g11mrup6s.apps.googleusercontent.com",
+              "client_id": "290002364028-reuvr9d785jdns32ttsssvt5j8c5nqb1.apps.googleusercontent.com",
               "client_type": 3
             }
           ]

@@ -1,11 +1,15 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:biodetect/themes.dart';
+import 'package:biodetect/services/profile_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:biodetect/views/badges/galeria_insignias.dart';
+import 'package:biodetect/services/google_drive_service.dart';
+import 'package:biodetect/views/location/location_picker_screen.dart';
 
 class RegDatos extends StatefulWidget {
   final File? imageFile;
@@ -32,15 +36,23 @@ class RegDatos extends StatefulWidget {
 }
 
 class _RegDatosState extends State<RegDatos> {
+  // Variables auxiliares para sincronización inmediata
+  String? _originalClass;
+  String? _originalOrder;
+  String? _originalPhotoId;
   final _formKey = GlobalKey<FormState>();
   final _latitudController = TextEditingController();
   final _longitudController = TextEditingController();
+  final _detailsController = TextEditingController();
+  final _notesController = TextEditingController();
+  Timer? _internetCheckTimer;
   
   String taxonOrder = '';
   String className = '';
   String habitat = '';
   String details = '';
   String notes = '';
+  String locationVisibility = ''; // Nueva variable para visibilidad de ubicación
   double lat = 0;
   double lon = 0;
   String? currentImageUrl;
@@ -49,6 +61,11 @@ class _RegDatosState extends State<RegDatos> {
   bool _hasInternet = true;
   bool _isGettingLocation = false;
   Map<String, double> _coords = {};
+  
+  // Contadores de caracteres para los campos de texto
+  int _detailsCharCount = 0;
+  int _notesCharCount = 0;
+  static const int _maxCharacters = 255;
 
   // Expresiones regulares separadas para latitud y longitud
   final RegExp _latitudRegExp = RegExp(r'^-?([0-8]?[0-9](\.[0-9]+)?|90(\.0+)?)$');
@@ -59,6 +76,11 @@ class _RegDatosState extends State<RegDatos> {
     super.initState();
     
     _isEditing = widget.photoId != null;
+
+    // Guardar valores originales para sincronización inmediata
+    if (_isEditing) {
+      _originalPhotoId = widget.photoId;
+    }
 
     if (widget.coordenadas != null) {
       _coords = widget.coordenadas!;
@@ -76,49 +98,162 @@ class _RegDatosState extends State<RegDatos> {
     taxonOrder = widget.ordenTaxonomico;
     currentImageUrl = widget.imageUrl;
 
+    // Inicializar visibilidad de ubicación según el modo
+    if (_isEditing) {
+      locationVisibility = 'Privada'; // Por defecto privada al editar
+    } else {
+      locationVisibility = 'Pública'; // Por defecto pública para nuevos registros
+    }
+
     _checkInternetConnection();
+    _startInternetMonitoring();
 
     if (widget.datosIniciales != null) {
       _loadDatosFromParam();
     } else if (_isEditing) {
       _loadPhotoData();
     }
+
+    // Inicializar contadores de caracteres
+    _detailsCharCount = details.length;
+    _notesCharCount = notes.length;
+    
+    // Inicializar controllers
+    _detailsController.text = details;
+    _notesController.text = notes;
   }
 
   @override
   void dispose() {
+    _internetCheckTimer?.cancel();
     _latitudController.dispose();
     _longitudController.dispose();
+    _detailsController.dispose();
+    _notesController.dispose();
     super.dispose();
+  }
+
+  void _startInternetMonitoring() {
+    // Verificar conexión cada 10 segundos (menos frecuente que detalle_registro)
+    _internetCheckTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (mounted) {
+        _checkInternetConnection();
+      }
+    });
   }
 
   Future<void> _checkInternetConnection() async {
     try {
-      final result = await InternetAddress.lookup('google.com');
-      setState(() {
-        _hasInternet = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-      });
+      final result = await InternetAddress.lookup('dns.google');
+      final hasConnection = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+      
+      if (mounted && _hasInternet != hasConnection) {
+        setState(() {
+          _hasInternet = hasConnection;
+        });
+        
+        // Mostrar notificaciones de conexión con iconos
+        if (hasConnection) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.wifi, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    'Conexión a internet restablecida',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.buttonGreen2,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.wifi_off, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    'Se perdió la conexión a internet',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.warning,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      } else if (mounted && _hasInternet != hasConnection) {
+        setState(() {
+          _hasInternet = hasConnection;
+        });
+      }
     } catch (_) {
-      setState(() {
-        _hasInternet = false;
-      });
+      if (mounted && _hasInternet) {
+        setState(() {
+          _hasInternet = false;
+        });
+        
+        // Mostrar notificación de pérdida de conexión
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.wifi_off, color: Colors.white),
+                SizedBox(width: 8),
+                Text(
+                  'Se perdió la conexión a internet',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.warning,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
   void _loadDatosFromParam() {
     final data = widget.datosIniciales!;
+    
     setState(() {
       taxonOrder = data['taxonOrder'] ?? '';
       className = data['class'] ?? '';
+      // Guardar valores originales si no se han guardado
+      _originalOrder ??= taxonOrder;
+      _originalClass ??= className;
       habitat = data['habitat'] ?? '';
       details = data['details'] ?? '';
       notes = data['notes'] ?? '';
+      
+      final savedVisibility = data['locationVisibility'];
+      
+      // Solo cambiar si tenemos un valor válido desde los datos
+      if (savedVisibility != null && savedVisibility.toString().isNotEmpty) {
+        locationVisibility = savedVisibility.toString();
+      }
+      
       if (data['coords'] != null) {
         lat = data['coords']['x'] ?? 0;
         lon = data['coords']['y'] ?? 0;
         _latitudController.text = lat != 0 ? lat.toString() : '';
         _longitudController.text = lon != 0 ? lon.toString() : '';
       }
+      
+      // Actualizar contadores de caracteres
+      _detailsCharCount = details.length;
+      _notesCharCount = notes.length;
+      
+      // Actualizar controllers
+      _detailsController.text = details;
+      _notesController.text = notes;
     });
   }
 
@@ -128,20 +263,41 @@ class _RegDatosState extends State<RegDatos> {
           .collection('insect_photos')
           .doc(widget.photoId)
           .get();
+          
       if (doc.exists) {
         final data = doc.data()!;
+        
         setState(() {
           taxonOrder = data['taxonOrder'] ?? '';
           className = data['class'] ?? '';
+          // Guardar valores originales si no se han guardado
+          _originalOrder ??= taxonOrder;
+          _originalClass ??= className;
           habitat = data['habitat'] ?? '';
           details = data['details'] ?? '';
           notes = data['notes'] ?? '';
+          
+          final savedVisibility = data['locationVisibility'];
+          
+          // Solo cambiar si tenemos un valor válido desde la BD
+          if (savedVisibility != null && savedVisibility.toString().isNotEmpty) {
+            locationVisibility = savedVisibility.toString();
+          }
+          
           if (data['coords'] != null) {
             lat = data['coords']['x'] ?? 0;
             lon = data['coords']['y'] ?? 0;
             _latitudController.text = lat != 0 ? lat.toString() : '';
             _longitudController.text = lon != 0 ? lon.toString() : '';
           }
+          
+          // Actualizar contadores de caracteres
+          _detailsCharCount = details.length;
+          _notesCharCount = notes.length;
+          
+          // Actualizar controllers
+          _detailsController.text = details;
+          _notesController.text = notes;
         });
       }
     } catch (e) {
@@ -153,104 +309,7 @@ class _RegDatosState extends State<RegDatos> {
     }
   }
 
-  Future<void> _actualizarActividadUsuario(String userId, {bool isIncrement = true}) async {
-    if (!_hasInternet) return;
 
-    try {
-      final activityRef = FirebaseFirestore.instance.collection('user_activity').doc(userId);
-      final increment = isIncrement ? 1 : -1;
-
-      // Primero obtenemos el documento actual para verificar si son orden/clase nuevos
-      final docSnapshot = await activityRef.get();
-
-      Map<String, dynamic> updateData = {
-        'userId': userId,
-        'photosUploaded': FieldValue.increment(increment),
-        'speciesIdentified.byTaxon.$taxonOrder': FieldValue.increment(increment),
-        'speciesIdentified.byClass.$className': FieldValue.increment(increment),
-        'lastActivity': FieldValue.serverTimestamp(),
-      };
-
-      if (docSnapshot.exists) {
-        // El documento existe, verificar si son orden y clase nuevos
-        final currentData = docSnapshot.data() as Map<String, dynamic>;
-
-        // Verificar si es un orden nuevo
-        final currentByTaxon = currentData['speciesIdentified']?['byTaxon'] as Map<String, dynamic>?;
-        final isNewOrder = currentByTaxon == null || !currentByTaxon.containsKey(taxonOrder);
-
-        // Verificar si es una clase nueva
-        final currentByClass = currentData['speciesIdentified']?['byClass'] as Map<String, dynamic>?;
-        final isNewClass = currentByClass == null || !currentByClass.containsKey(className);
-
-        // Verificar si es un nuevo orden para esta clase específica
-        final isNewOrderForClass = isNewOrder; // Si el orden es nuevo globalmente, también es nuevo para la clase
-
-        // Solo incrementar totales si son orden/clase nuevos
-        if (isNewOrder && isIncrement) {
-          updateData['speciesIdentified.totalByTaxon'] = FieldValue.increment(1);
-        } else if (!isIncrement && !isNewOrder) {
-          // Al decrementar, verificar si queda en 0 para decrementar el total
-          final currentOrderCount = currentByTaxon[taxonOrder] ?? 0;
-          if (currentOrderCount <= 1) {
-            updateData['speciesIdentified.totalByTaxon'] = FieldValue.increment(-1);
-          }
-        }
-
-        if (isNewClass && isIncrement) {
-          updateData['speciesIdentified.totalByClass'] = FieldValue.increment(1);
-        } else if (!isIncrement && !isNewClass) {
-          // Al decrementar, verificar si queda en 0 para decrementar el total
-          final currentClassCount = currentByClass[className] ?? 0;
-          if (currentClassCount <= 1) {
-            updateData['speciesIdentified.totalByClass'] = FieldValue.increment(-1);
-          }
-        }
-
-        // Manejar el contador de taxonomías por clase
-        if (isNewOrderForClass && isIncrement) {
-          updateData['speciesIdentified.byClassTaxonomy.$className'] = FieldValue.increment(1);
-          // print('🆕 New taxonomy for class $className: $taxonOrder');
-        } else if (!isIncrement && !isNewOrderForClass) {
-          // Al decrementar, verificar si queda en 0 para decrementar el total de taxonomías de la clase
-          final currentOrderCount = currentByTaxon?[taxonOrder] ?? 0;
-          if (currentOrderCount <= 1) {
-            updateData['speciesIdentified.byClassTaxonomy.$className'] = FieldValue.increment(-1);
-          }
-        }
-
-        await activityRef.update(updateData);
-
-      } else {
-        // El documento no existe, crear uno nuevo
-        await activityRef.set({
-          'userId': userId,
-          'fieldNotesCreated': 0,
-          'photosUploaded': isIncrement ? 1 : 0,
-          'speciesIdentified': {
-            'byTaxon': {
-              taxonOrder: isIncrement ? 1 : 0,
-            },
-            'byClass': {
-              className: isIncrement ? 1 : 0,
-            },
-            'byClassTaxonomy': {
-              className: isIncrement ? 1 : 0,  // Primera taxonomía para esta clase
-            },
-            'totalByTaxon': isIncrement ? 1 : 0,
-            'totalByClass': isIncrement ? 1 : 0,
-          },
-          'lastActivity': FieldValue.serverTimestamp(),
-        });
-      }
-
-      // print('✅ User activity updated successfully for user $userId');
-      // print('📊 Order: $taxonOrder, Class: $className');
-
-    } catch (error) {
-      // print('❌ Error updating user activity: $error');
-    }
-  }
 
   // void _updateCoordinatesFromFields() {
   //   // Actualizar las coordenadas desde los campos de texto
@@ -272,9 +331,239 @@ class _RegDatosState extends State<RegDatos> {
   //   }
   // }
 
+  /// SISTEMA DE VERIFICACIONES DE CONEXIÓN PARA CREACIÓN/ACTUALIZACIÓN DE REGISTROS:
+  /// 
+  /// Este método implementa múltiples verificaciones de conexión a internet durante todo el proceso
+  /// para garantizar la integridad de los datos y evitar estados inconsistentes:
+  /// 
+  /// VERIFICACIONES IMPLEMENTADAS:
+  /// 1. Verificación inicial antes de mostrar el indicador de progreso
+  /// 2. Verificación final antes de la operación crítica principal
+  /// 3. Verificaciones adicionales antes de subir imágenes (solo creación)
+  /// 4. Verificaciones antes de crear/actualizar documentos en Firestore
+  /// 5. Verificaciones antes de actualizar la actividad del usuario
+  /// 
+  /// RESULTADO: Si se pierde la conexión en cualquier punto crítico, todo el proceso
+  /// se cancela para evitar registros incompletos o actividades de usuario desincronizadas.
+
+  /// Método principal que implementa el patrón híbrido:
+  /// - Batch para operaciones Firestore (atómicas)
+  /// - Manejo especial para Firebase Storage
+  Future<String> _guardarRegistroAtomico(String userId, String? photoId, String? imageUrl) async {
+    print('🔄 Iniciando ${_isEditing ? 'actualización' : 'creación'} atómica del registro');
+    
+    // FASE 1: Preparar datos para el batch
+    final batch = FirebaseFirestore.instance.batch();
+    await _prepararActualizacionActividad(userId, batch);
+    
+    // FASE 2: Manejar Storage (fuera del batch)
+    String? finalImageUrl = imageUrl;
+    String? finalPhotoId = photoId;
+    
+    if (!_isEditing) {
+      // Solo para registros nuevos: subir imagen
+      finalPhotoId = FirebaseFirestore.instance.collection('insect_photos').doc().id;
+      
+      // Verificación adicional de conexión justo antes de subir imagen
+      print('🔍 Verificación final de conectividad antes de subir imagen...');
+      try {
+        await InternetAddress.lookup('dns.google').timeout(const Duration(seconds: 10));
+        print('✅ Conectividad confirmada para subida de imagen');
+      } catch (e) {
+        print('❌ Fallo en verificación final - cancelando creación');
+        throw Exception('Se perdió la conexión a internet durante el proceso. La creación ha sido cancelada por seguridad.');
+      }
+      
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('insect_photos/$userId/original/$finalPhotoId.jpg');
+      await ref.putFile(widget.imageFile!);
+      finalImageUrl = await ref.getDownloadURL();
+      print('✅ Imagen subida a Storage: $finalImageUrl');
+    }
+    
+    // FASE 3: Preparar documento principal en el batch
+    final documentRef = FirebaseFirestore.instance.collection('insect_photos').doc(finalPhotoId);
+    
+    if (_isEditing) {
+      // Actualizar registro existente
+      batch.update(documentRef, {
+        'taxonOrder': taxonOrder,
+        'class': className,
+        'habitat': habitat,
+        'details': details,
+        'notes': notes,
+        'coords': {'x': lat, 'y': lon},
+        'locationVisibility': locationVisibility,
+        'lastModifiedAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      // Crear nuevo registro
+      batch.set(documentRef, {
+        'userId': userId,
+        'imageUrl': finalImageUrl,
+        'uploadedAt': FieldValue.serverTimestamp(),
+        'lastModifiedAt': FieldValue.serverTimestamp(),
+        'syncedAt': null,
+        'taxonOrder': taxonOrder,
+        'class': className,
+        'habitat': habitat,
+        'details': details,
+        'notes': notes,
+        'coords': {'x': lat, 'y': lon},
+        'locationVisibility': locationVisibility,
+      });
+    }
+    
+    // FASE 4: Ejecutar todas las operaciones Firestore de forma atómica
+    try {
+      // Verificación final antes del batch commit
+      print('🔍 Verificación final de conectividad antes del batch commit...');
+      try {
+        await InternetAddress.lookup('dns.google').timeout(const Duration(seconds: 10));
+        print('✅ Conectividad final confirmada para batch commit');
+      } catch (e) {
+        print('❌ Fallo en verificación final - cancelando batch commit');
+        throw Exception('Se perdió la conexión a internet durante el proceso. El batch ha sido cancelado por seguridad.');
+      }
+      
+      await batch.commit();
+      print('✅ Batch commit exitoso - Todas las operaciones Firestore completadas');
+      
+      // VERIFICACIÓN FINAL: Confirmar que todo el proceso se completó exitosamente
+      print('✅ Proceso completo exitoso - ${_isEditing ? 'Registro actualizado' : 'Registro creado'} y actividad actualizada');
+      
+      return finalPhotoId!;
+      
+    } catch (e) {
+      print('❌ Error en batch commit: $e');
+      
+      // ROLLBACK: Intentar eliminar imagen en Storage si fue subida y el batch falló
+      if (!_isEditing && finalImageUrl != null) {
+        print('🔄 Intentando rollback de Storage...');
+        try {
+          final ref = FirebaseStorage.instance.refFromURL(finalImageUrl);
+          await ref.delete();
+          print('✅ Rollback de Storage exitoso - imagen eliminada');
+        } catch (rollbackError) {
+          print('⚠️ Error en rollback de Storage: $rollbackError');
+          print('⚠️ La imagen fue subida a Storage pero el batch falló. Revisar manualmente: $finalImageUrl');
+        }
+      }
+      
+      throw Exception('Error en ${_isEditing ? 'actualización' : 'creación'} atómica: $e');
+    }
+  }
+
+  /// Preparar actualización de actividad de usuario y agregarla al batch
+  Future<void> _prepararActualizacionActividad(String userId, WriteBatch batch) async {
+    // VERIFICACIÓN 1: Conexión inicial antes de iniciar actualización de actividad
+    print('🔍 Verificando conexión inicial para preparación de actividad del usuario...');
+    await _checkInternetConnection();
+    if (!_hasInternet) {
+      print('❌ Sin conexión - cancelando preparación de actividad');
+      throw Exception('Se requiere conexión a internet para preparar la actualización de actividad del usuario');
+    }
+
+    try {
+      final activityRef = FirebaseFirestore.instance.collection('user_activity').doc(userId);
+      final increment = _isEditing ? 0 : 1; // Solo incrementar para registros nuevos
+
+      // VERIFICACIÓN 2: Conexión justo antes de operación crítica de lectura
+      print('🔍 Verificación final de conectividad antes de leer documento de actividad...');
+      try {
+        await InternetAddress.lookup('dns.google').timeout(const Duration(seconds: 10));
+        print('✅ Conectividad confirmada para lectura de actividad');
+      } catch (e) {
+        print('❌ Fallo en verificación final - cancelando lectura de actividad');
+        throw Exception('Se perdió la conexión a internet durante la preparación de actividad. El proceso ha sido cancelado por seguridad.');
+      }
+
+      if (increment > 0) {
+        // Solo actualizar actividad para registros nuevos
+        final docSnapshot = await activityRef.get();
+
+        Map<String, dynamic> updateData = {
+          'userId': userId,
+          'photosUploaded': FieldValue.increment(increment),
+          'speciesIdentified.byTaxon.$taxonOrder': FieldValue.increment(increment),
+          'speciesIdentified.byClass.$className': FieldValue.increment(increment),
+          'lastActivity': FieldValue.serverTimestamp(),
+        };
+
+        if (docSnapshot.exists) {
+          // El documento existe, verificar si son orden y clase nuevos
+          final currentData = docSnapshot.data() as Map<String, dynamic>;
+
+          // Verificar si es un orden nuevo
+          final currentByTaxon = currentData['speciesIdentified']?['byTaxon'] as Map<String, dynamic>?;
+          final isNewOrder = currentByTaxon == null || !currentByTaxon.containsKey(taxonOrder);
+
+          // Verificar si es una clase nueva
+          final currentByClass = currentData['speciesIdentified']?['byClass'] as Map<String, dynamic>?;
+          final isNewClass = currentByClass == null || !currentByClass.containsKey(className);
+
+          // Verificar si es un nuevo orden para esta clase específica
+          final isNewOrderForClass = isNewOrder; // Si el orden es nuevo globalmente, también es nuevo para la clase
+
+          // Solo incrementar totales si son orden/clase nuevos
+          if (isNewOrder) {
+            updateData['speciesIdentified.totalByTaxon'] = FieldValue.increment(1);
+            print('🆕 New taxon detected: $taxonOrder');
+          }
+
+          if (isNewClass) {
+            updateData['speciesIdentified.totalByClass'] = FieldValue.increment(1);
+            print('🆕 New class detected: $className');
+          }
+
+          // Manejar el contador de taxonomías por clase
+          if (isNewOrderForClass) {
+            updateData['speciesIdentified.byClassTaxonomy.$className'] = FieldValue.increment(1);
+            print('🆕 New taxonomy for class $className: $taxonOrder');
+          }
+
+          // Agregar actualización al batch
+          batch.update(activityRef, updateData);
+
+        } else {
+          // El documento no existe, crear uno nuevo con batch
+          batch.set(activityRef, {
+            'userId': userId,
+            'fieldNotesCreated': 0,
+            'photosUploaded': 1,
+            'speciesIdentified': {
+              'byTaxon': {
+                taxonOrder: 1,
+              },
+              'byClass': {
+                className: 1,
+              },
+              'byClassTaxonomy': {
+                className: 1,  // Primera taxonomía para esta clase
+              },
+              'totalByTaxon': 1,
+              'totalByClass': 1,
+            },
+            'lastActivity': FieldValue.serverTimestamp(),
+          });
+          print('🆕 Creating new user activity document');
+        }
+        
+        print('✅ Actualización de actividad preparada para usuario: $userId');
+      } else {
+        print('ℹ️ Saltando actualización de actividad (modo edición)');
+      }
+
+    } catch (error) {
+      print('❌ Error preparando actualización de actividad: $error');
+      throw Exception('Error en preparación de actividad del usuario: $error');
+    }
+  }
+
   Future<void> _guardarDatos() async {
     if (_isProcessing) return;
-    
+
     if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -284,65 +573,380 @@ class _RegDatosState extends State<RegDatos> {
       );
       return;
     }
-    
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
 
+    // VERIFICACIÓN 1: Conexión inicial antes de mostrar proceso
+    print('🔍 Verificando conexión inicial antes de ${_isEditing ? 'actualizar' : 'guardar'}...');
+    await _checkInternetConnection();
     if (!_hasInternet) {
+      String mensaje = _isEditing 
+        ? 'Se requiere conexión a internet para actualizar registros. Verifica tu conexión e inténtalo de nuevo.'
+        : 'Se requiere conexión a internet para guardar registros. Verifica tu conexión e inténtalo de nuevo.';
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Se requiere conexión a internet para guardar registros'),
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.wifi_off, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  mensaje,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
           backgroundColor: AppColors.warning,
+          duration: const Duration(seconds: 4),
         ),
       );
       return;
     }
+    
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Sincronizar valores de los controllers con las variables globales
+    details = _detailsController.text;
+    notes = _notesController.text;
 
     setState(() => _isProcessing = true);
 
+    // Mostrar indicador de progreso
+    final operacionTexto = _isEditing ? 'Actualizando' : 'Guardando';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '$operacionTexto registro... No cierres la aplicación.',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.slateGreen,
+        duration: const Duration(seconds: 30), // Duración larga para cubrir el proceso
+      ),
+    );
+
     try {
-      // Actualizar coordenadas desde los campos de texto
-      // _updateCoordinatesFromFields(); // No actualizar ubicación al guardar
-      
+      // VERIFICACIÓN 2: Conexión justo antes de la operación crítica
+      print('🔍 Verificación final de conexión antes de ${_isEditing ? 'actualizar' : 'guardar'}...');
+      await _checkInternetConnection();
+      if (!_hasInternet) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.wifi_off, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Se perdió la conexión a internet. ${_isEditing ? 'La actualización' : 'El guardado'} ha sido cancelado por seguridad.',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.warning,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+        return;
+      }
+
+      print('🔄 Iniciando ${_isEditing ? 'actualización' : 'guardado'} de registro...');
+
       if (_isEditing) {
-        // Modo edición: actualizar registro existente
-        final docRef = FirebaseFirestore.instance
-            .collection('insect_photos')
-            .doc(widget.photoId);
+        // Obtener datos actuales para comparar clase/orden y estado de sincronización
+        final docRef = FirebaseFirestore.instance.collection('insect_photos').doc(widget.photoId);
+        final docSnap = await docRef.get();
+        final prevData = docSnap.data();
+        final prevClass = prevData?['class'] ?? '';
+        final prevOrder = prevData?['taxonOrder'] ?? '';
+        final prevSyncedAt = prevData?['syncedAt'];
+
+        final classChanged = prevClass != className;
+        final orderChanged = prevOrder != taxonOrder;
+        final wasSynced = prevSyncedAt != null;
+
+        // Si cambió clase/orden y estaba sincronizado, preguntar al usuario
+        if (wasSynced && (classChanged || orderChanged)) {
+          final shouldSync = await showDialog<bool>(
+            // ignore: use_build_context_synchronously
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: AppColors.backgroundCard,
+              title: const Text('¿Sincronizar cambios en Google Drive?', style: TextStyle(color: AppColors.textWhite)),
+              content: const Text(
+                'Has cambiado la clase y/o el orden taxonómico de un registro ya sincronizado.\n\n¿Deseas sincronizar el registro editado en Google Drive? (Esto eliminará los archivos anteriores y subirá los nuevos en la carpeta correspondiente).',
+                style: TextStyle(color: AppColors.textWhite),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('No', style: TextStyle(color: AppColors.warning)),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.buttonGreen2),
+                  child: const Text('Sí, sincronizar'),
+                ),
+              ],
+            ),
+          );
+
+          if (shouldSync == true) {
+            // 1. Eliminar archivos viejos de Drive y subir los nuevos usando los valores originales
+            try {
+              // Usar patrón atómico para actualización con sincronización
+              await _guardarRegistroAtomico(user.uid, widget.photoId, currentImageUrl);
+              
+              // Obtener datos actualizados para metadatos
+              final updatedSnap = await docRef.get();
+              final updatedData = updatedSnap.data()!;
+              
+              // Llamar al servicio de Drive usando los valores originales
+              await GoogleDriveService.resyncPhotoWithNewClassOrder(
+                photoId: _originalPhotoId!,
+                prevClass: _originalClass!,
+                prevOrder: _originalOrder!,
+                newClass: className,
+                newOrder: taxonOrder,
+                photoData: updatedData,
+              );
+              
+              print('🔄 Resyncing photo ${_originalPhotoId!} from Class $_originalClass, Order $_originalOrder to Class $className, Order $taxonOrder');
+              
+              // NOTIFICAR AL PERFIL: Informar que se actualizó un registro (puede afectar contadores si cambió clase/orden)
+              ProfileNotifier().notifyProfileChanged();
+              print('🔔 Notificado al ProfileScreen: registro actualizado con sincronización (cambio de taxonomía)');
+              
+              if (mounted) {
+                ScaffoldMessenger.of(context).clearSnackBars();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Row(
+                      children: [
+                        Icon(Icons.cloud_done, color: Colors.white),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Datos y archivos sincronizados correctamente en Drive.',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                    backgroundColor: AppColors.buttonGreen2,
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+                Navigator.of(context).pop(true);
+              }
+              return;
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error al sincronizar con Drive: $e')),
+                );
+              }
+              return;
+            }
+          } else {
+            // Usuario NO quiere sincronizar, usar patrón atómico y marcar como pendiente
+            try {
+              await _guardarRegistroAtomico(user.uid, widget.photoId, currentImageUrl);
+              
+              // Marcar como pendiente de sincronización
+              await docRef.update({'syncedAt': null});
+              
+              // NOTIFICAR AL PERFIL: Informar que se actualizó un registro (puede afectar contadores si cambió clase/orden)
+              ProfileNotifier().notifyProfileChanged();
+              print('🔔 Notificado al ProfileScreen: registro actualizado sin sincronización (cambio de taxonomía)');
+              
+              if (mounted) {
+                ScaffoldMessenger.of(context).clearSnackBars();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Row(
+                      children: [
+                        Icon(Icons.check_circle, color: Colors.white),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Datos actualizados. El registro se marcará como pendiente de sincronización.',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                    backgroundColor: AppColors.buttonGreen2,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+                Navigator.of(context).pop(true);
+              }
+              return;
+            } catch (e) {
+              throw e; // Re-lanzar para manejo en catch principal
+            }
+          }
+        }
+
+        // Edición normal (sin cambio de clase/orden o no estaba sincronizado)
+        // Usar patrón híbrido: Batch para Firestore
+        await _guardarRegistroAtomico(user.uid, widget.photoId, currentImageUrl);
         
-        await docRef.update({
-          'taxonOrder': taxonOrder,
-          'class': className,
-          'habitat': habitat,
-          'details': details,
-          'notes': notes,
-          'coords': {'x': lat, 'y': lon},
-        });
+        // NOTIFICAR AL PERFIL: Informar que se actualizó un registro (edición normal)
+        ProfileNotifier().notifyProfileChanged();
+        print('🔔 Notificado al ProfileScreen: registro actualizado (edición normal)');
         
         if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Datos actualizados correctamente'),
-              duration: Duration(seconds: 2),
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    'Registro actualizado exitosamente',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.buttonGreen2,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          Navigator.of(context).pop(true);
+        }
+      } else {
+        // Modo nuevo: usar patrón híbrido para crear registro
+        await _guardarRegistroAtomico(user.uid, null, null);
+        
+        // NOTIFICAR AL PERFIL: Informar que se creó un nuevo registro
+        ProfileNotifier().notifyRegistroCreado();
+        print('🔔 Notificado al ProfileScreen: nuevo registro creado (Clase: $className, Orden: $taxonOrder)');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    'Registro guardado exitosamente',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.buttonGreen2,
+              duration: Duration(seconds: 3),
             ),
           );
           
-          // En modo edición, no verificamos insignias porque no se actualiza la actividad del usuario
-          // Las insignias solo se verifican al crear nuevos registros
-          // NOTA: Sujeto a cambios, aquí se podría considerar verificar insignias en el futuro
-
+          // Pequeña pausa para que se vea el SnackBar antes de las notificaciones
+          await Future.delayed(const Duration(milliseconds: 1000));
+          
+          // Verificar y mostrar notificaciones de nuevas insignias
+          try {
+            // ignore: use_build_context_synchronously
+            await GaleriaInsigniasScreen.checkAndShowNotifications(context);
+          } catch (e) {
+            // No mostrar error al usuario, ya que el guardado fue exitoso
+          }
+          
           if (mounted) {
-            Navigator.of(context).pop(true);
+            Navigator.of(context).pop('saved');
           }
         }
-      } else {
-        // Modo nuevo: crear nuevo registro
-        await _guardarNuevoRegistro(user.uid);
       }
     } catch (e) {
+      print('❌ Error al ${_isEditing ? 'actualizar' : 'guardar'} registro: $e');
+      
       if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        
+        // Extraer mensaje limpio del error
+        String errorMessage = 'No se pudo ${_isEditing ? 'actualizar' : 'guardar'} el registro. Inténtalo de nuevo.';
+        IconData errorIcon = Icons.error_outline;
+        
+        String cleanErrorMessage = e.toString();
+        if (cleanErrorMessage.startsWith('Exception: ')) {
+          cleanErrorMessage = cleanErrorMessage.substring(11);
+        }
+        
+        final errorString = cleanErrorMessage.toLowerCase();
+        
+        if (errorString.contains('servidor no está disponible') ||
+            errorString.contains('unavailable') ||
+            errorString.contains('network') || 
+            errorString.contains('internet') || 
+            errorString.contains('connection') ||
+            errorString.contains('timeout') ||
+            errorString.contains('cancelado por seguridad') ||
+            errorString.contains('actividad del usuario') ||
+            errorString.contains('actividad ha sido cancelada')) {
+          errorMessage = 'Problema de conexión. Verifica tu internet e inténtalo de nuevo.';
+          errorIcon = Icons.wifi_off;
+        } else if (errorString.contains('permisos') ||
+                   errorString.contains('permission') || 
+                   errorString.contains('unauthorized')) {
+          errorMessage = 'No tienes permisos para realizar esta operación.';
+          errorIcon = Icons.lock;
+        } else if (errorString.contains('sesión ha expirado') ||
+                   errorString.contains('inicia sesión')) {
+          errorMessage = 'Tu sesión ha expirado. Inicia sesión nuevamente.';
+          errorIcon = Icons.account_circle_outlined;
+        } else if (errorString.contains('cuota') ||
+                   errorString.contains('quota')) {
+          errorMessage = 'Se ha superado el límite de uso. Inténtalo más tarde.';
+          errorIcon = Icons.hourglass_empty;
+        } else if (errorString.contains('cancelada por seguridad')) {
+          errorMessage = cleanErrorMessage;
+          errorIcon = Icons.shield_outlined;
+        } else if (errorString.length > 10 && errorString.length < 80) {
+          errorMessage = cleanErrorMessage;
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al guardar: $e')),
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(errorIcon, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    errorMessage,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.warning,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Reintentar',
+              textColor: Colors.white,
+              onPressed: () => _guardarDatos(),
+            ),
+          ),
         );
       }
     } finally {
@@ -350,60 +954,7 @@ class _RegDatosState extends State<RegDatos> {
     }
   }
 
-  Future<void> _guardarNuevoRegistro(String userId) async {
-    final photoId = FirebaseFirestore.instance.collection('insect_photos').doc().id;
-    
-    // Subir imagen a Storage
-    final ref = FirebaseStorage.instance
-        .ref()
-        .child('insect_photos/$userId/original/$photoId.jpg');
-    await ref.putFile(widget.imageFile!);
-    final imageUrl = await ref.getDownloadURL();
-    
-    // Crear documento en Firestore
-    await FirebaseFirestore.instance.collection('insect_photos').doc(photoId).set({
-      'userId': userId,
-      'imageUrl': imageUrl,
-      'uploadedAt': FieldValue.serverTimestamp(),
-      'verificationDate': FieldValue.serverTimestamp(),
-      'taxonOrder': taxonOrder,
-      'class': className,
-      'habitat': habitat,
-      'details': details,
-      'notes': notes,
-      'coords': {'x': lat, 'y': lon},
-    });
-    
-    // Actualizar actividad del usuario
-    await _actualizarActividadUsuario(userId, isIncrement: true);
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Datos guardados correctamente'),
-          backgroundColor: AppColors.buttonGreen2,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      
-      // Pequeña pausa para que se vea el SnackBar antes de las notificaciones
-      await Future.delayed(const Duration(milliseconds: 1000));
-      
-      // Verificar y mostrar notificaciones de nuevas insignias
-      // Solo se hace aquí porque es cuando se actualiza la actividad del usuario con un nuevo registro
-      try {
-        // ignore: use_build_context_synchronously
-        await GaleriaInsigniasScreen.checkAndShowNotifications(context);
-      } catch (e) {
-        // print('Error al verificar insignias: $e');
-        // No mostrar error al usuario, ya que el guardado fue exitoso
-      }
-      
-      if (mounted) {
-        Navigator.of(context).pop('saved');
-      }
-    }
-  }
+
 
   Future<void> _getCurrentLocation() async {
     if (_isGettingLocation) return;
@@ -461,6 +1012,62 @@ class _RegDatosState extends State<RegDatos> {
     }
   }
 
+  Future<void> _openLocationPicker() async {
+    if (_isProcessing) return;
+
+    try {
+      // Obtener coordenadas actuales de los campos de texto
+      double? currentLat;
+      double? currentLon;
+
+      if (_latitudController.text.isNotEmpty) {
+        currentLat = double.tryParse(_latitudController.text);
+      }
+      if (_longitudController.text.isNotEmpty) {
+        currentLon = double.tryParse(_longitudController.text);
+      }
+
+      // Abrir el selector de ubicación
+      final result = await Navigator.of(context).push<Map<String, double>>(
+        MaterialPageRoute(
+          builder: (context) => LocationPickerScreen(
+            initialLatitude: currentLat,
+            initialLongitude: currentLon,
+            taxonOrder: taxonOrder.isNotEmpty ? taxonOrder : widget.ordenTaxonomico, // Pasar el orden taxonómico
+          ),
+        ),
+      );
+
+      // Si el usuario seleccionó una ubicación, actualizar los campos
+      if (result != null && result.containsKey('latitude') && result.containsKey('longitude')) {
+        setState(() {
+          lat = result['latitude']!;
+          lon = result['longitude']!;
+          _latitudController.text = lat.toStringAsFixed(6);
+          _longitudController.text = lon.toStringAsFixed(6);
+        });
+
+        // Mostrar confirmación
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ubicación seleccionada desde el mapa'),
+            backgroundColor: AppColors.buttonGreen2,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al abrir el mapa: $e'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+    }
+  }
+
   String? _validateLatitud(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'La latitud es requerida';
@@ -512,7 +1119,7 @@ class _RegDatosState extends State<RegDatos> {
       'Acari', // Arachnida
       'Amblypygi', // Arachnida
       'Araneae', // Arachnida
-      'Scorpions', // Arachnida
+      'Scorpiones', // Arachnida
       'Solifugae', // Arachnida
       'Dermaptera', // Insecta
       'Lepidoptera', // Insecta
@@ -530,7 +1137,7 @@ class _RegDatosState extends State<RegDatos> {
   List<DropdownMenuItem<String>> _getFilteredTaxonOrder() {
     // Definir qué órdenes pertenecen a cada clase con tipado explícito
     final Map<String, List<String>> classToOrders = {
-      'Arachnida': ['Acari', 'Amblypygi', 'Araneae', 'Scorpions', 'Solifugae'],
+      'Arachnida': ['Acari', 'Amblypygi', 'Araneae', 'Scorpiones', 'Solifugae'],
       'Insecta': ['Dermaptera', 'Lepidoptera', 'Mantodea', 'Orthoptera', 'Thysanoptera'],
     };
 
@@ -585,14 +1192,91 @@ class _RegDatosState extends State<RegDatos> {
     return null;
   }
 
+  List<DropdownMenuItem<String>> _getLocationVisibilityItems() {
+    return [
+      'Pública',
+      'Privada'
+    ].map((String value) {
+      return DropdownMenuItem<String>(
+        value: value,
+        child: Text(value),
+      );
+    }).toList();
+  }
+
+  String? _getValidLocationVisibilityValue() {
+    if (locationVisibility.isNotEmpty && _getLocationVisibilityItems().any((item) => item.value == locationVisibility)) {
+      return locationVisibility;
+    }
+    return null;
+  }
+
+  void _updateDetailsCharCount(String text) {
+    setState(() {
+      _detailsCharCount = text.length;
+    });
+  }
+
+  void _updateNotesCharCount(String text) {
+    setState(() {
+      _notesCharCount = text.length;
+    });
+  }
+
+  // Función helper para limitar saltos de línea
+  String _limitLineBreaks(String text, int maxLines) {
+    // Contar los saltos de línea en el texto
+    final lineBreaks = '\n'.allMatches(text).length;
+    
+    if (lineBreaks <= maxLines - 1) {
+      return text; // Permitir el texto si no excede el límite (maxLines - 1 porque la primera línea no necesita \n)
+    }
+    
+    // Si excede el límite, recortar el texto hasta el último salto de línea permitido
+    final lines = text.split('\n');
+    if (lines.length > maxLines) {
+      return lines.take(maxLines).join('\n');
+    }
+    
+    return text;
+  }
+
+  // Función para manejar cambios en el campo de detalles con validación de saltos de línea
+  void _onDetailsChanged(String value) {
+    final limitedText = _limitLineBreaks(value, 3);
+    if (limitedText != value) {
+      // Si el texto fue limitado, actualizar el controller sin triggear onChanged
+      _detailsController.value = _detailsController.value.copyWith(
+        text: limitedText,
+        selection: TextSelection.collapsed(offset: limitedText.length),
+      );
+    }
+    details = limitedText;
+    _updateDetailsCharCount(limitedText);
+  }
+
+  // Función para manejar cambios en el campo de notas con validación de saltos de línea
+  void _onNotesChanged(String value) {
+    final limitedText = _limitLineBreaks(value, 3);
+    if (limitedText != value) {
+      // Si el texto fue limitado, actualizar el controller sin triggear onChanged
+      _notesController.value = _notesController.value.copyWith(
+        text: limitedText,
+        selection: TextSelection.collapsed(offset: limitedText.length),
+      );
+    }
+    notes = limitedText;
+    _updateNotesCharCount(limitedText);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary, // Cambiar de gradiente a color sólido
         child: SafeArea(
           child: SingleChildScrollView(
             child: Padding(
@@ -672,7 +1356,7 @@ class _RegDatosState extends State<RegDatos> {
                               elevation: 4,
                               margin: EdgeInsets.zero,
                               child: SizedBox(
-                                height: 180,
+                                height: 210,
                                 width: double.infinity,
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(16),
@@ -691,77 +1375,105 @@ class _RegDatosState extends State<RegDatos> {
                             // Formulario
                             Column(
                               children: [
-                                // Clase - Convertido a Dropdown
-                                IgnorePointer(
-                                  ignoring: _isProcessing,
-                                  child: DropdownButtonFormField<String>(
-                                    value: _getValidClassesValue(),
-                                    decoration: InputDecoration(
-                                      labelText: 'Clase',
-                                      labelStyle: const TextStyle(color: AppColors.textWhite),
-                                      filled: true,
-                                      fillColor: _isProcessing
-                                          ? AppColors.paleGreen.withValues(alpha: 0.5)
-                                          : AppColors.paleGreen,
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide.none,
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Clase - Convertido a Dropdown
+                                    const Text(
+                                      'Clase:',
+                                      style: TextStyle(
+                                        color: AppColors.textWhite,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
-                                    dropdownColor: AppColors.paleGreen,
-                                    style: TextStyle(
-                                      color: _isProcessing
-                                          ? AppColors.textBlack.withValues(alpha: 0.5)
-                                          : AppColors.textBlack,
+                                    const SizedBox(height: 5),
+                                    IgnorePointer(
+                                      ignoring: _isProcessing,
+                                      child: DropdownButtonFormField<String>(
+                                        value: _getValidClassesValue(),
+                                        decoration: InputDecoration(
+                                          hintText: 'Arachnida',
+                                          labelStyle: const TextStyle(color: AppColors.textWhite),
+                                          filled: true,
+                                          fillColor: _isProcessing
+                                              ? AppColors.paleGreen.withValues(alpha: 0.5)
+                                              : AppColors.paleGreen,
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                            borderSide: BorderSide.none,
+                                          ),
+                                        ),
+                                        dropdownColor: AppColors.paleGreen,
+                                        style: TextStyle(
+                                          color: _isProcessing
+                                              ? AppColors.textBlack.withValues(alpha: 0.5)
+                                              : AppColors.textBlack,
+                                        ),
+                                        items: _getClassesArthropods(),
+                                        onChanged: _isProcessing
+                                            ? null
+                                            : (value) {
+                                          setState(() {
+                                            className = value ?? '';
+                                            // Reset taxonOrder cuando cambia la clase
+                                            taxonOrder = '';
+                                          });
+                                        },
+                                        validator: (value) => value?.trim().isEmpty ?? true
+                                            ? 'La clase es requerida' : null,
+                                      ),
                                     ),
-                                    items: _getClassesArthropods(),
-                                    onChanged: _isProcessing
-                                        ? null
-                                        : (value) {
-                                      setState(() {
-                                        className = value ?? '';
-                                        // Reset taxonOrder cuando cambia la clase
-                                        taxonOrder = '';
-                                      });
-                                    },
-                                    validator: (value) => value?.trim().isEmpty ?? true
-                                        ? 'La clase es requerida' : null,
-                                  ),
+                                  ],
                                 ),
                                 const SizedBox(height: 16),
-                                // Orden taxonómico - Convertido a Dropdown dependiente
-                                IgnorePointer(
-                                  ignoring: _isProcessing || className.isEmpty,
-                                  child: DropdownButtonFormField<String>(
-                                    value: _getValidTaxonValue(),
-                                    decoration: InputDecoration(
-                                      labelText: 'Orden Taxonómico',
-                                      labelStyle: const TextStyle(color: AppColors.textWhite),
-                                      filled: true,
-                                      fillColor: _isProcessing || className.isEmpty
-                                          ? AppColors.slateGrey.withValues(alpha: 0.3)
-                                          : AppColors.paleGreen,
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide.none,
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Orden taxonómico - Convertido a Dropdown dependiente
+                                    const Text(
+                                      'Orden taxonómico:',
+                                      style: TextStyle(
+                                        color: AppColors.textWhite,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
                                       ),
-                                      suffixIcon: className.isEmpty
-                                          ? const Icon(Icons.lock, color: AppColors.textPaleGreen)
-                                          : null,
                                     ),
-                                    dropdownColor: AppColors.paleGreen,
-                                    style: TextStyle(
-                                      color: _isProcessing || className.isEmpty
-                                          ? AppColors.textBlack.withValues(alpha: 0.5)
-                                          : AppColors.textBlack,
+                                    const SizedBox(height: 5),
+                                    IgnorePointer(
+                                      ignoring: _isProcessing || className.isEmpty,
+                                      child: DropdownButtonFormField<String>(
+                                        value: _getValidTaxonValue(),
+                                        decoration: InputDecoration(
+                                          hintText: 'Araneae',
+                                          labelStyle: const TextStyle(color: AppColors.textWhite),
+                                          filled: true,
+                                          fillColor: _isProcessing || className.isEmpty
+                                              ? AppColors.slateGrey.withValues(alpha: 0.3)
+                                              : AppColors.paleGreen,
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                            borderSide: BorderSide.none,
+                                          ),
+                                          suffixIcon: className.isEmpty
+                                              ? const Icon(Icons.lock, color: AppColors.textPaleGreen)
+                                              : null,
+                                        ),
+                                        dropdownColor: AppColors.paleGreen,
+                                        style: TextStyle(
+                                          color: _isProcessing || className.isEmpty
+                                              ? AppColors.textBlack.withValues(alpha: 0.5)
+                                              : AppColors.textBlack,
+                                        ),
+                                        items: _getFilteredTaxonOrder(),
+                                        onChanged: _isProcessing || className.isEmpty
+                                            ? null
+                                            : (value) => setState(() => taxonOrder = value ?? ''),
+                                        validator: (value) => value?.trim().isEmpty ?? true
+                                            ? 'El orden taxonómico es requerido' : null,
+                                      ),
                                     ),
-                                    items: _getFilteredTaxonOrder(),
-                                    onChanged: _isProcessing || className.isEmpty
-                                        ? null
-                                        : (value) => setState(() => taxonOrder = value ?? ''),
-                                    validator: (value) => value?.trim().isEmpty ?? true
-                                        ? 'El orden taxonómico es requerido' : null,
-                                  ),
+                                  ],
                                 ),
                                 const SizedBox(height: 16),
                                 // Coordenadas mejoradas
@@ -775,43 +1487,66 @@ class _RegDatosState extends State<RegDatos> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
+                                      // Header de coordenadas
                                       Row(
                                         children: [
-                                          const Icon(Icons.location_on, color: AppColors.buttonGreen2),
+                                          const Icon(Icons.location_on, color: AppColors.buttonGreen2, size: 20),
                                           const SizedBox(width: 8),
-                                          const Text(
-                                            'Coordenadas GPS',
-                                            style: TextStyle(
-                                              color: AppColors.textWhite,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
+                                          const Expanded(
+                                            child: Text(
+                                              'Ubicación',
+                                              style: TextStyle(
+                                                color: AppColors.textWhite,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
                                           ),
-                                          const Spacer(),
-                                          // Botón de ubicación solo con icono
+                                          // Botón de mapa más compacto
                                           Container(
+                                            margin: const EdgeInsets.only(right: 4),
+                                            width: 36,
+                                            height: 36,
+                                            decoration: BoxDecoration(
+                                              color: AppColors.buttonBrown2,
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: IconButton(
+                                              icon: const Icon(Icons.map, size: 18),
+                                              color: AppColors.textBlack,
+                                              onPressed: _isProcessing ? null : _openLocationPicker,
+                                              tooltip: 'Mapa',
+                                              padding: EdgeInsets.zero,
+                                            ),
+                                          ),
+                                          // Botón de ubicación actual más compacto
+                                          Container(
+                                            width: 36,
+                                            height: 36,
                                             decoration: BoxDecoration(
                                               color: AppColors.buttonGreen2,
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius: BorderRadius.circular(6),
                                             ),
                                             child: IconButton(
                                               icon: _isGettingLocation
                                                   ? const SizedBox(
-                                                      width: 20,
-                                                      height: 20,
+                                                      width: 16,
+                                                      height: 16,
                                                       child: CircularProgressIndicator(
                                                         color: AppColors.textBlack,
                                                         strokeWidth: 2,
                                                       ),
                                                     )
-                                                  : const Icon(Icons.my_location, color: AppColors.textBlack),
+                                                  : const Icon(Icons.my_location, size: 18),
+                                              color: AppColors.textBlack,
                                               onPressed: (_isProcessing || _isGettingLocation) ? null : _getCurrentLocation,
-                                              tooltip: 'Obtener ubicación actual',
+                                              tooltip: 'Ubicación actual',
+                                              padding: EdgeInsets.zero,
                                             ),
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 16),
+                                      const SizedBox(height: 12),
                                       // Campo Latitud
                                       Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -820,17 +1555,17 @@ class _RegDatosState extends State<RegDatos> {
                                             'Latitud:',
                                             style: TextStyle(
                                               color: AppColors.textWhite,
-                                              fontSize: 14,
+                                              fontSize: 12,
                                               fontWeight: FontWeight.w600,
                                             ),
                                           ),
-                                          const SizedBox(height: 8),
+                                          const SizedBox(height: 5),
                                           TextFormField(
                                             controller: _latitudController,
                                             enabled: !_isProcessing,
                                             keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
                                             decoration: InputDecoration(
-                                              hintText: 'Ej: 19.432608',
+                                              hintText: 'ej: 19.432608',
                                               hintStyle: const TextStyle(color: AppColors.textBlack),
                                               filled: true,
                                               fillColor: AppColors.paleGreen,
@@ -849,7 +1584,7 @@ class _RegDatosState extends State<RegDatos> {
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 16),
+                                      const SizedBox(height: 12),
                                       // Campo Longitud
                                       Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -858,17 +1593,17 @@ class _RegDatosState extends State<RegDatos> {
                                             'Longitud:',
                                             style: TextStyle(
                                               color: AppColors.textWhite,
-                                              fontSize: 14,
+                                              fontSize: 12,
                                               fontWeight: FontWeight.w600,
                                             ),
                                           ),
-                                          const SizedBox(height: 8),
+                                          const SizedBox(height: 5),
                                           TextFormField(
                                             controller: _longitudController,
                                             enabled: !_isProcessing,
                                             keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
                                             decoration: InputDecoration(
-                                              hintText: 'Ej: -99.133209',
+                                              hintText: 'ej: -99.133209',
                                               hintStyle: const TextStyle(color: AppColors.textBlack),
                                               filled: true,
                                               fillColor: AppColors.paleGreen,
@@ -887,80 +1622,194 @@ class _RegDatosState extends State<RegDatos> {
                                           ),
                                         ],
                                       ),
+                                      const SizedBox(height: 12),
+                                      // Campo Visibilidad de Ubicación
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Visibilidad de ubicación:',
+                                            style: TextStyle(
+                                              color: AppColors.textWhite,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 5),
+                                          DropdownButtonFormField<String>(
+                                            value: _getValidLocationVisibilityValue(),
+                                            decoration: InputDecoration(
+                                              hintText: 'Seleccionar visibilidad',
+                                              hintStyle: const TextStyle(color: AppColors.textBlack),
+                                              filled: true,
+                                              fillColor: _isProcessing 
+                                                  ? AppColors.paleGreen.withValues(alpha: 0.5) 
+                                                  : AppColors.paleGreen,
+                                              border: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(8),
+                                                borderSide: BorderSide.none,
+                                              ),
+                                              prefixIcon: const Icon(Icons.visibility, color: AppColors.textBlack),
+                                            ),
+                                            dropdownColor: AppColors.paleGreen,
+                                            style: TextStyle(
+                                              color: _isProcessing 
+                                                  ? AppColors.textBlack.withValues(alpha: 0.5) 
+                                                  : AppColors.textBlack,
+                                            ),
+                                            items: _getLocationVisibilityItems(),
+                                            onChanged: _isProcessing 
+                                                ? null 
+                                                : (value) => setState(() => locationVisibility = value ?? ''),
+                                            validator: (value) => value?.trim().isEmpty ?? true 
+                                                ? 'La visibilidad es requerida' : null,
+                                          ),
+                                        ],
+                                      ),
                                     ],
                                   ),
                                 ),
                                 const SizedBox(height: 16),
-                                // Hábitat - CORREGIDO
-                                IgnorePointer(
-                                  ignoring: _isProcessing,
-                                  child: DropdownButtonFormField<String>(
-                                    value: _getValidHabitatValue(),
-                                    decoration: InputDecoration(
-                                      labelText: 'Hábitat',
-                                      labelStyle: const TextStyle(color: AppColors.textWhite),
-                                      filled: true,
-                                      fillColor: _isProcessing 
-                                          ? AppColors.paleGreen.withValues(alpha: 0.5) 
-                                          : AppColors.paleGreen,
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide.none,
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Hábitat
+                                    const Text(
+                                      'Hábitat:',
+                                      style: TextStyle(
+                                        color: AppColors.textWhite,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
-                                    dropdownColor: AppColors.paleGreen,
-                                    style: TextStyle(
-                                      color: _isProcessing 
-                                          ? AppColors.textBlack.withValues(alpha: 0.5) 
-                                          : AppColors.textBlack,
+                                    const SizedBox(height: 5),
+                                    IgnorePointer(
+                                      ignoring: _isProcessing,
+                                      child: DropdownButtonFormField<String>(
+                                        value: _getValidHabitatValue(),
+                                        decoration: InputDecoration(
+                                          hintText: 'Ej: Bosques',
+                                          labelStyle: const TextStyle(color: AppColors.textWhite),
+                                          filled: true,
+                                          fillColor: _isProcessing 
+                                              ? AppColors.paleGreen.withValues(alpha: 0.5) 
+                                              : AppColors.paleGreen,
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                            borderSide: BorderSide.none,
+                                          ),
+                                        ),
+                                        dropdownColor: AppColors.paleGreen,
+                                        style: TextStyle(
+                                          color: _isProcessing 
+                                              ? AppColors.textBlack.withValues(alpha: 0.5) 
+                                              : AppColors.textBlack,
+                                        ),
+                                        items: _getHabitatItems(),
+                                        onChanged: _isProcessing 
+                                            ? null 
+                                            : (value) => setState(() => habitat = value ?? ''),
+                                        validator: (value) => value?.trim().isEmpty ?? true 
+                                            ? 'El hábitat es requerido' : null,
+                                      ),
                                     ),
-                                    items: _getHabitatItems(),
-                                    onChanged: _isProcessing 
-                                        ? null 
-                                        : (value) => setState(() => habitat = value ?? ''),
-                                    validator: (value) => value?.trim().isEmpty ?? true 
-                                        ? 'El hábitat es requerido' : null,
-                                  ),
+                                  ],
                                 ),
                                 const SizedBox(height: 16),
-                                // Detalles
-                                TextFormField(
-                                  initialValue: details,
-                                  enabled: !_isProcessing,
-                                  onChanged: (v) => details = v,
-                                  maxLines: 3,
-                                  decoration: InputDecoration(
-                                    labelText: 'Detalles adicionales',
-                                    labelStyle: const TextStyle(color: AppColors.textWhite),
-                                    filled: true,
-                                    fillColor: AppColors.paleGreen,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide.none,
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Detalles
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text(
+                                          'Detalles adicionales:',
+                                          style: TextStyle(
+                                            color: AppColors.textWhite,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        Text(
+                                          '$_detailsCharCount/$_maxCharacters',
+                                          style: const TextStyle(
+                                            color: AppColors.textWhite,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  style: const TextStyle(color: AppColors.textBlack),
+                                    const SizedBox(height: 5),
+                                    TextFormField(
+                                      controller: _detailsController,
+                                      enabled: !_isProcessing,
+                                      maxLength: _maxCharacters,
+                                      onChanged: _onDetailsChanged,
+                                      maxLines: 3,
+                                      decoration: InputDecoration(
+                                        hintText: 'Ej: Encontrado bajo una roca cerca de un arroyo',
+                                        labelStyle: const TextStyle(color: AppColors.textWhite),
+                                        filled: true,
+                                        fillColor: AppColors.paleGreen,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        counterText: '', // Ocultar el contador por defecto
+                                      ),
+                                      style: const TextStyle(color: AppColors.textBlack),
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(height: 16),
-                                // Notas
-                                TextFormField(
-                                  initialValue: notes,
-                                  enabled: !_isProcessing,
-                                  onChanged: (v) => notes = v,
-                                  maxLines: 3,
-                                  decoration: InputDecoration(
-                                    labelText: 'Notas personales',
-                                    labelStyle: const TextStyle(color: AppColors.textWhite),
-                                    filled: true,
-                                    fillColor: AppColors.paleGreen,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide.none,
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Notas
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text(
+                                          'Notas personales:',
+                                          style: TextStyle(
+                                            color: AppColors.textWhite,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        Text(
+                                          '$_notesCharCount/$_maxCharacters',
+                                          style: const TextStyle(
+                                            color: AppColors.textWhite,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  style: const TextStyle(color: AppColors.textBlack),
+                                    const SizedBox(height: 5),
+                                    TextFormField(
+                                      controller: _notesController,
+                                      enabled: !_isProcessing,
+                                      maxLength: _maxCharacters,
+                                      onChanged: _onNotesChanged,
+                                      maxLines: 3,
+                                      decoration: InputDecoration(
+                                        hintText: 'Ej: Parecía inofensivo pero tenía un patrón interesante',
+                                        labelStyle: const TextStyle(color: AppColors.textWhite),
+                                        filled: true,
+                                        fillColor: AppColors.paleGreen,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        counterText: '', // Ocultar el contador por defecto
+                                      ),
+                                      style: const TextStyle(color: AppColors.textBlack),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 24),
+                                const SizedBox(height: 25),
                                 // Botón guardar/actualizar
                                 Row(
                                   children: [
@@ -997,18 +1846,22 @@ class _RegDatosState extends State<RegDatos> {
                                         label: Text(
                                           _isProcessing
                                               ? (_isEditing ? 'Actualizando...' : 'Guardando...')
-                                              : (_isEditing ? 'Actualizar' : 'Guardar'),
+                                              : !_hasInternet
+                                                  ? 'Sin conexión'
+                                                  : (_isEditing ? 'Actualizar' : 'Guardar'),
                                           style: const TextStyle(fontWeight: FontWeight.bold),
                                         ),
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: AppColors.buttonGreen2,
+                                          backgroundColor: !_hasInternet 
+                                              ? AppColors.warning.withValues(alpha: 0.7)
+                                              : AppColors.buttonGreen2,
                                           foregroundColor: AppColors.textBlack,
                                           minimumSize: const Size(0, 48),
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(8),
                                           ),
                                         ),
-                                        onPressed: _isProcessing ? null : _guardarDatos,
+                                        onPressed: (_isProcessing || !_hasInternet) ? null : _guardarDatos,
                                       ),
                                     ),
                                   ],

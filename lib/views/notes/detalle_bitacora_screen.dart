@@ -1,9 +1,16 @@
+import 'dart:io';
+import 'dart:async';
+import 'dart:typed_data';
 import 'package:biodetect/themes.dart';
 import 'package:biodetect/services/bitacora_service.dart';
 import 'package:biodetect/services/pdf_service.dart';
+import 'package:biodetect/views/notes/bitacora_map_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
+import 'package:firebase_auth/firebase_auth.dart';
 
 class DetalleBitacoraScreen extends StatefulWidget {
   final Map<String, dynamic> bitacoraData;
@@ -28,6 +35,156 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  // Verificar si el usuario actual es el propietario de la bitácora
+  bool _isCurrentUserOwner() {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return false;
+    
+    // Verificar por UID del usuario actual vs el authorId de la bitácora
+    final authorId = widget.bitacoraData['authorId'];
+    if (authorId != null) {
+      return currentUser.uid == authorId;
+    }
+    
+    // Verificar por email si no hay authorId
+    final authorEmail = widget.bitacoraData['authorEmail'];
+    if (authorEmail != null) {
+      return currentUser.email == authorEmail;
+    }
+    
+    // Como alternativa, verificar por nombre del autor si coincide con el display name
+    if (currentUser.displayName != null && currentUser.displayName!.isNotEmpty) {
+      return currentUser.displayName == _authorName;
+    }
+    
+    return false;
+  }
+
+  // Verificar si hay registros con ubicación privada
+  bool _hasPrivateLocationRegistros() {
+    return _registros.any((registro) {
+      final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+      return locationVisibility == 'Privada';
+    });
+  }
+
+  // Mostrar diálogo para elegir opciones de PDF
+  Future<String?> _showPdfOptionsDialog(String action) async {
+    return showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.backgroundCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            'Opciones de ubicación',
+            style: const TextStyle(
+              color: AppColors.textWhite,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Tu bitácora contiene registros con ubicación privada. ¿Cómo deseas ${action.toLowerCase()} el PDF?',
+                style: const TextStyle(
+                  color: AppColors.textPaleGreen,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Opción 1: Respetar ajustes
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.buttonGreen2, width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  leading: const Icon(
+                    Icons.settings,
+                    color: AppColors.buttonGreen2,
+                    size: 20,
+                  ),
+                  title: const Text(
+                    'Respetar ajustes de privacidad',
+                    style: TextStyle(
+                      color: AppColors.textWhite,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Solo incluir coordenadas de registros públicos',
+                    style: TextStyle(
+                      color: AppColors.textPaleGreen,
+                      fontSize: 12,
+                    ),
+                  ),
+                  onTap: () => Navigator.of(context).pop('respetar'),
+                ),
+              ),
+              
+              const SizedBox(height: 12),
+              
+              // Opción 2: Todas las ubicaciones públicas
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.warning, width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  leading: const Icon(
+                    Icons.public,
+                    color: AppColors.warning,
+                    size: 20,
+                  ),
+                  title: const Text(
+                    'Hacer todas las ubicaciones públicas',
+                    style: TextStyle(
+                      color: AppColors.textWhite,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Incluir coordenadas de todos los registros',
+                    style: TextStyle(
+                      color: AppColors.textPaleGreen,
+                      fontSize: 12,
+                    ),
+                  ),
+                  onTap: () => Navigator.of(context).pop('publicas'),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(
+                  color: AppColors.textPaleGreen,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _loadData() async {
@@ -73,18 +230,7 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
     }
   }
 
-  String _formatCoords(Map<String, dynamic> registro) {
-    if (registro['coords'] == null) return 'Sin coordenadas';
-    
-    final lat = registro['coords']['x'];
-    final lon = registro['coords']['y'];
-    
-    if (lat == null || lon == null || (lat == 0 && lon == 0)) {
-      return 'Sin coordenadas';
-    }
-    
-    return '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
-  }
+
 
   Future<void> _generarPdf() async {
     if (_registros.isEmpty) {
@@ -97,27 +243,70 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
       return;
     }
 
+    // Verificar si es el propietario y tiene registros privados
+    // Solo mostrar diálogo si es el propietario y hay registros con ubicación privada
+    String? opcionSeleccionada;
+    if (_isCurrentUserOwner() && _hasPrivateLocationRegistros()) {
+      opcionSeleccionada = await _showPdfOptionsDialog('Guardar');
+      if (opcionSeleccionada == null) {
+        // Usuario canceló el diálogo
+        return;
+      }
+    }
+
     setState(() => _isGeneratingPdf = true);
 
     try {
       final titulo = widget.bitacoraData['title'] ?? 'Sin título';
-      final fileName = 'Bitacora_${titulo.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}';
+      final fileName = 'BioDetect_${titulo.replaceAll(' ', '_')}';
+      
+      // Determinar qué registros usar según la opción seleccionada
+      List<Map<String, dynamic>> registrosParaPdf;
+      if (opcionSeleccionada == 'publicas') {
+        // Crear una copia de los registros con todas las ubicaciones como públicas
+        registrosParaPdf = _registros.map((registro) {
+          final registroCopia = Map<String, dynamic>.from(registro);
+          registroCopia['locationVisibility'] = 'Pública';
+          return registroCopia;
+        }).toList();
+      } else {
+        // Usar registros originales (respetando ajustes de privacidad)
+        registrosParaPdf = _registros;
+      }
       
       final pdfBytes = await PdfService.generateBitacoraPdf(
         bitacoraData: widget.bitacoraData,
-        registros: _registros,
+        registros: registrosParaPdf,
         authorName: _authorName,
       );
 
-      // Vista previa del PDF
-      await PdfService.previewPdf(pdfBytes, fileName);
+      // Guardar directamente el PDF en el dispositivo
+      final savedPath = await PdfService.saveDirectlyToPdf(pdfBytes, fileName);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('PDF guardado exitosamente en: $savedPath'),
+            backgroundColor: AppColors.buttonGreen2,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Entendido',
+              textColor: AppColors.textBlack,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
+          ),
+        );
+      }
 
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al generar PDF: $e'),
+            content: Text('Error al guardar PDF: $e'),
             backgroundColor: AppColors.warning,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -137,15 +326,40 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
       return;
     }
 
+    // Verificar si es el propietario y tiene registros privados
+    // Solo mostrar diálogo si es el propietario y hay registros con ubicación privada
+    String? opcionSeleccionada;
+    if (_isCurrentUserOwner() && _hasPrivateLocationRegistros()) {
+      opcionSeleccionada = await _showPdfOptionsDialog('Compartir');
+      if (opcionSeleccionada == null) {
+        // Usuario canceló el diálogo
+        return;
+      }
+    }
+
     setState(() => _isSharing = true);
 
     try {
       final titulo = widget.bitacoraData['title'] ?? 'Sin título';
       final fileName = 'Bitacora_${titulo.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}';
       
+      // Determinar qué registros usar según la opción seleccionada
+      List<Map<String, dynamic>> registrosParaPdf;
+      if (opcionSeleccionada == 'publicas') {
+        // Crear una copia de los registros con todas las ubicaciones como públicas
+        registrosParaPdf = _registros.map((registro) {
+          final registroCopia = Map<String, dynamic>.from(registro);
+          registroCopia['locationVisibility'] = 'Pública';
+          return registroCopia;
+        }).toList();
+      } else {
+        // Usar registros originales (respetando ajustes de privacidad)
+        registrosParaPdf = _registros;
+      }
+      
       final pdfBytes = await PdfService.generateBitacoraPdf(
         bitacoraData: widget.bitacoraData,
-        registros: _registros,
+        registros: registrosParaPdf,
         authorName: _authorName,
       );
 
@@ -165,23 +379,117 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
     }
   }
 
+  // Método para obtener registros para el mapa según si es propietario o no
+  List<Map<String, dynamic>> _getRegistrosParaMapa() {
+    if (_isCurrentUserOwner()) {
+      // Si es el propietario, devolver todos los registros con coordenadas válidas
+      return _registros.where((registro) {
+        if (registro['coords'] == null) return false;
+        
+        final lat = registro['coords']['x'];
+        final lon = registro['coords']['y'];
+        
+        return lat != null && lon != null && (lat != 0 || lon != 0);
+      }).toList();
+    } else {
+      // Si no es el propietario, solo registros públicos (comportamiento anterior)
+      return _getRegistrosConUbicacionPublica();
+    }
+  }
+
+  // Método para obtener solo los registros con ubicación pública
+  List<Map<String, dynamic>> _getRegistrosConUbicacionPublica() {
+    return _registros.where((registro) {
+      final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+      final isPublic = locationVisibility == 'Pública';
+      
+      // Verificar que además tenga coordenadas válidas
+      if (!isPublic) return false;
+      
+      if (registro['coords'] == null) return false;
+      
+      final lat = registro['coords']['x'];
+      final lon = registro['coords']['y'];
+      
+      return lat != null && lon != null && (lat != 0 || lon != 0);
+    }).toList();
+  }
+
+  void _abrirMapaBitacora() {
+    final titulo = widget.bitacoraData['title'] ?? 'Sin título';
+    final registrosParaMapa = _getRegistrosParaMapa();
+    
+    // Mostrar mensaje informativo si es bitácora propia
+    if (_isCurrentUserOwner()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.info_outline, color: AppColors.textBlack, size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Bitácora propia: mostrando todas las ubicaciones',
+                  style: TextStyle(
+                    color: AppColors.textBlack,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.buttonGreen2,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+    
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => BitacoraMapScreen(
+          registros: registrosParaMapa,
+          bitacoraTitle: titulo,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final titulo = widget.bitacoraData['title'] ?? 'Sin título';
     final descripcion = widget.bitacoraData['description'] ?? 'Sin descripción';
     final fechaCreacion = _formatDate(widget.bitacoraData['createdAt']);
     final isPublic = widget.bitacoraData['isPublic'] ?? false;
+    
+    // Verificar si mostrar el botón del mapa
+    final isOwner = _isCurrentUserOwner();
+    final registrosParaMapa = _getRegistrosParaMapa();
+    final mostrarBotonMapa = isOwner || registrosParaMapa.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: AppColors.deepGreen,
+      backgroundColor: AppColors.backgroundPrimary, // Cambiar de AppColors.deepGreen
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          // Botón de mapa - mostrar si es propietario O si hay registros públicos
+          if (mostrarBotonMapa) ...[
+            FloatingActionButton(
+              backgroundColor: AppColors.buttonGreen2,
+              foregroundColor: AppColors.textBlack,
+              heroTag: "map_bitacora",
+              onPressed: (_isGeneratingPdf || _isSharing) ? null : _abrirMapaBitacora,
+              tooltip: isOwner ? 'Ver en mapa (todas las ubicaciones)' : 'Ver en mapa',
+              child: const Icon(Icons.map_outlined),
+            ),
+            const SizedBox(width: 16),
+          ],
+          // Botón de guardar directo
           FloatingActionButton(
             backgroundColor: AppColors.buttonBlue1,
             foregroundColor: AppColors.textWhite,
-            heroTag: "generate_pdf",
+            heroTag: "save_pdf",
             onPressed: (_isGeneratingPdf || _isSharing) ? null : _generarPdf,
+            tooltip: _isGeneratingPdf ? 'Guardando...' : 'Guardar PDF',
             child: _isGeneratingPdf 
                 ? const SizedBox(
                     width: 20,
@@ -191,15 +499,16 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
                       strokeWidth: 2,
                     ),
                   )
-                : const Icon(Icons.picture_as_pdf),
-            tooltip: _isGeneratingPdf ? 'Generando...' : 'Generar PDF',
+                : const Icon(Icons.save),
           ),
           const SizedBox(width: 16),
+          // Botón de compartir
           FloatingActionButton(
             backgroundColor: AppColors.buttonGreen1,
             foregroundColor: AppColors.textWhite,
             heroTag: "share_pdf",
             onPressed: (_isGeneratingPdf || _isSharing) ? null : _compartirBitacora,
+            tooltip: _isSharing ? 'Compartiendo...' : 'Compartir PDF',
             child: _isSharing 
                 ? const SizedBox(
                     width: 20,
@@ -210,14 +519,13 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
                     ),
                   )
                 : const Icon(Icons.share),
-            tooltip: _isSharing ? 'Compartiendo...' : 'Compartir PDF',
           ),
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary, // Cambiar de decoration con backgroundColor
         child: Stack(
           children: [
             // Contenido principal con padding superior para el header flotante
@@ -422,7 +730,7 @@ class _DetalleBitacoraScreenState extends State<DetalleBitacoraScreen> {
                     ),
                     const Expanded(
                       child: Text(
-                        'Detalle de bitácora',
+                        'Detalles',
                         style: TextStyle(
                           color: AppColors.textWhite,
                           fontSize: 22,
@@ -476,6 +784,19 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
     required this.registro,
   });
 
+  // Método para mostrar imagen en pantalla completa
+  void _showFullScreenImage(BuildContext context, String imageUrl, Map<String, dynamic> registroData) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullScreenImageViewer(
+          imageUrl: imageUrl,
+          registroData: registroData,
+        ),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
   String _formatDate(dynamic date) {
     if (date == null) return 'Sin fecha';
     
@@ -487,17 +808,83 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
     }
   }
 
-  String _formatCoords() {
-    if (registro['coords'] == null) return 'Sin coordenadas';
+  Widget _buildCoordsRow() {
+    // Verificar la visibilidad de la ubicación - por defecto privada si no existe
+    final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+    final isPublic = locationVisibility == 'Pública';
     
-    final lat = registro['coords']['x'];
-    final lon = registro['coords']['y'];
+    String coordsText;
+    Color iconColor;
+    IconData iconData;
     
-    if (lat == null || lon == null || (lat == 0 && lon == 0)) {
-      return 'Sin coordenadas';
+    if (!isPublic) {
+      coordsText = 'No disponible';
+      iconColor = AppColors.warning;
+      iconData = Icons.lock;
+    } else {
+      // Si es pública, verificar si hay coordenadas válidas
+      if (registro['coords'] == null) {
+        coordsText = 'Sin coordenadas';
+        iconColor = AppColors.textPaleGreen;
+        iconData = Icons.location_off;
+      } else {
+        final lat = registro['coords']['x'];
+        final lon = registro['coords']['y'];
+        
+        if (lat == null || lon == null || (lat == 0 && lon == 0)) {
+          coordsText = 'Sin coordenadas';
+          iconColor = AppColors.textPaleGreen;
+          iconData = Icons.location_off;
+        } else {
+          coordsText = '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
+          iconColor = AppColors.buttonGreen2;
+          iconData = Icons.public;
+        }
+      }
     }
     
-    return '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: RichText(
+              text: const TextSpan(
+                text: 'Coordenadas: ',
+                style: TextStyle(
+                  color: AppColors.buttonGreen2,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Row(
+              children: [
+                Icon(
+                  iconData,
+                  size: 16,
+                  color: iconColor,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    coordsText,
+                    style: const TextStyle(
+                      color: AppColors.textWhite,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -515,35 +902,38 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Foto
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: CachedNetworkImage(
-                imageUrl: registro['imageUrl'] ?? '',
-                height: 220,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Container(
-                  height: 220,
-                  color: AppColors.paleGreen.withValues(alpha: 0.3),
-                  child: const Center(
-                    child: CircularProgressIndicator(
-                      color: AppColors.buttonGreen2,
+            GestureDetector(
+              onTap: () => _showFullScreenImage(context, registro['imageUrl'] ?? '', registro),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CachedNetworkImage(
+                  imageUrl: registro['imageUrl'] ?? '',
+                  height: 220, // Agregué la coma que faltaba aquí
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    height: 220,
+                    color: AppColors.paleGreen.withValues(alpha: 0.3),
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.buttonGreen2,
+                      ),
                     ),
                   ),
-                ),
-                errorWidget: (context, url, error) => Container(
-                  height: 220,
-                  color: AppColors.paleGreen.withValues(alpha: 0.3),
-                  child: const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.error_outline, color: AppColors.warning, size: 50),
-                      SizedBox(height: 8),
-                      Text(
-                        'Error al cargar imagen',
-                        style: TextStyle(color: AppColors.textPaleGreen),
-                      ),
-                    ],
+                  errorWidget: (context, url, error) => Container(
+                    height: 220,
+                    color: AppColors.paleGreen.withValues(alpha: 0.3),
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.error_outline, color: AppColors.warning, size: 50),
+                        SizedBox(height: 8),
+                        Text(
+                          'Error al cargar imagen',
+                          style: TextStyle(color: AppColors.textPaleGreen),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -553,11 +943,12 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
             _buildInfoRow('Orden:', registro['taxonOrder'] ?? 'No especificado'),
             _buildInfoRow('Clase:', registro['class'] ?? 'No especificada'),
             _buildInfoRow('Hábitat:', registro['habitat'] ?? 'No especificado'),
-            _buildInfoRow('Verificado:', _formatDate(registro['verificationDate'])),
-            _buildInfoRow('Coordenadas:', _formatCoords()),
+            _buildInfoRow('Fecha:', _formatDate(registro['lastModifiedAt'])),
+            _buildCoordsRow(), // Usar el método personalizado para coordenadas
             
-            if ((registro['details'] ?? '').toString().isNotEmpty) ...[
+            if ((registro['details'] ?? '').toString().isNotEmpty) 
               const SizedBox(height: 12),
+            if ((registro['details'] ?? '').toString().isNotEmpty) 
               const Text(
                 'Detalles:',
                 style: TextStyle(
@@ -566,7 +957,9 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
                   fontSize: 16,
                 ),
               ),
+            if ((registro['details'] ?? '').toString().isNotEmpty) 
               const SizedBox(height: 4),
+            if ((registro['details'] ?? '').toString().isNotEmpty) 
               Text(
                 registro['details'] ?? '',
                 style: const TextStyle(
@@ -574,10 +967,10 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
                   fontSize: 14,
                 ),
               ),
-            ],
             
-            if ((registro['notes'] ?? '').toString().isNotEmpty) ...[
+            if ((registro['notes'] ?? '').toString().isNotEmpty) 
               const SizedBox(height: 12),
+            if ((registro['notes'] ?? '').toString().isNotEmpty) 
               const Text(
                 'Observaciones:',
                 style: TextStyle(
@@ -586,7 +979,9 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
                   fontSize: 16,
                 ),
               ),
+            if ((registro['notes'] ?? '').toString().isNotEmpty) 
               const SizedBox(height: 4),
+            if ((registro['notes'] ?? '').toString().isNotEmpty) 
               Text(
                 registro['notes'] ?? '',
                 style: const TextStyle(
@@ -594,7 +989,6 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
                   fontSize: 14,
                 ),
               ),
-            ],
           ],
         ),
       ),
@@ -623,6 +1017,494 @@ class RegistroDetalleBitacoraCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// Widget para mostrar imagen en pantalla completa
+class FullScreenImageViewer extends StatelessWidget {
+  final String imageUrl;
+  final Map<String, dynamic>? registroData;
+
+  const FullScreenImageViewer({
+    super.key,
+    required this.imageUrl,
+    this.registroData,
+  });
+
+  // Verificar conexión a internet
+  Future<bool> _checkInternetConnection() async {
+    try {
+      final result = await InternetAddress.lookup('dns.google');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Método para descargar la imagen con metadatos usando MediaStore (Android)
+  Future<void> _downloadImageWithMetadata(BuildContext context) async {
+    try {
+      // VALIDACIÓN 1: Verificar conexión a internet antes de iniciar la descarga
+      print('🔍 Verificando conexión a internet...');
+      final hasInternet = await _checkInternetConnection();
+      
+      if (!hasInternet) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.wifi_off, color: Colors.white),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Sin conexión a internet. Verifica tu conexión e inténtalo de nuevo.',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.warning,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Mostrar indicador de descarga con información detallada
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.deepGreen),
+                strokeWidth: 3.0,
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Descargando imagen de bitácora...',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Verificando conexión y descargando archivo\nEsto puede tomar unos momentos',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                  height: 1.4,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.wifi,
+                    size: 16,
+                    color: Colors.green[600],
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Conexión verificada',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.green[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+
+      print('🌐 Iniciando descarga de imagen de bitácora desde: $imageUrl');
+      
+      // DESCARGA CON TIMEOUT Y VALIDACIÓN DE CONEXIÓN
+      final response = await http.get(
+        Uri.parse(imageUrl),
+      ).timeout(
+        const Duration(seconds: 30), // Timeout de 30 segundos
+        onTimeout: () {
+          throw TimeoutException('La descarga tardó demasiado tiempo. Verifica tu conexión a internet.', const Duration(seconds: 30));
+        },
+      );
+
+      if (response.statusCode == 200) {
+        print('✅ Descarga exitosa. Tamaño: ${response.bodyBytes.length} bytes');
+        
+        // VALIDACIÓN 2: Verificar que los datos descargados no estén vacíos
+        if (response.bodyBytes.isEmpty) {
+          throw Exception('La imagen descargada está vacía. Verifica tu conexión e inténtalo de nuevo.');
+        }
+        
+        // Generar nombre y estructura de carpetas
+        final photoId = registroData?['photoId'] ?? DateTime.now().millisecondsSinceEpoch.toString();
+        
+        // Obtener datos taxonómicos
+        final clase = registroData?['class'] ?? 'Sin_Clasificar';
+        final orden = registroData?['taxonOrder'] ?? 'Sin_Orden';
+        
+        // Limpiar caracteres especiales para nombres de archivo y carpeta
+        final claseClean = clase.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+        final ordenClean = orden.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+        
+        // Nuevo formato para bitácoras: BioDetect_Bitacora_Orden_photoId
+        final fileName = 'BioDetect_Bitacora_${ordenClean}_$photoId';
+        
+        print('💾 Guardando imagen de bitácora como: $fileName en carpeta: $claseClean');
+        
+        // Usar MediaStore para guardar imagen y metadatos
+        await _saveImageToMediaStore(response.bodyBytes, fileName, claseClean);
+        
+        // Crear archivo de metadatos si hay información disponible
+        if (registroData != null) {
+          await _saveMetadataToMediaStore(fileName, registroData!, claseClean);
+        }
+        
+        // Cerrar indicador
+        if (context.mounted) Navigator.of(context).pop();
+        
+        // Mostrar mensaje de éxito
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Imagen de bitácora: Galería → BioDetect → $claseClean\n'
+                          '📄 Metadatos: Documentos → BioDetect → $claseClean'),
+              backgroundColor: AppColors.buttonGreen2,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+      } else if (response.statusCode == 404) {
+        throw Exception('La imagen no se encontró en el servidor (Error 404).');
+      } else if (response.statusCode >= 500) {
+        throw Exception('Error del servidor (${response.statusCode}). Inténtalo más tarde.');
+      } else {
+        throw Exception('Error al descargar la imagen (Código ${response.statusCode}). Verifica tu conexión.');
+      }
+    } on TimeoutException catch (_) {
+      // Error específico de timeout
+      print('⏰ Timeout en descarga de imagen de bitácora');
+      if (context.mounted) Navigator.of(context).pop();
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.access_time, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'La descarga tardó demasiado tiempo. Verifica tu conexión a internet e inténtalo de nuevo.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.warning,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    } on SocketException catch (_) {
+      // Error específico de conexión de red
+      print('🌐 Error de conexión de red en bitácora');
+      if (context.mounted) Navigator.of(context).pop();
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.wifi_off, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Sin conexión a internet. Verifica tu conexión e inténtalo de nuevo.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.warning,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } on FormatException catch (_) {
+      // Error de formato de datos
+      print('📄 Error de formato en la respuesta');
+      if (context.mounted) Navigator.of(context).pop();
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'La imagen tiene un formato inválido. Por favor reporta este problema.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      // Manejo de otros errores con mensajes específicos
+      print('❌ Error en descarga de bitácora: $e');
+      if (context.mounted) Navigator.of(context).pop();
+      
+      String errorMessage = 'Error inesperado al descargar la imagen.';
+      Color backgroundColor = Colors.red;
+      IconData errorIcon = Icons.error_outline;
+      
+      // Analizar el tipo de error para proporcionar mensajes específicos
+      final errorString = e.toString().toLowerCase();
+      
+      if (errorString.contains('connection') || errorString.contains('network') || errorString.contains('internet')) {
+        errorMessage = 'Problema de conexión a internet. Verifica tu conexión e inténtalo de nuevo.';
+        backgroundColor = AppColors.warning;
+        errorIcon = Icons.wifi_off;
+      } else if (errorString.contains('404')) {
+        errorMessage = 'La imagen no se encontró en el servidor.';
+        backgroundColor = AppColors.warning;
+        errorIcon = Icons.image_not_supported;
+      } else if (errorString.contains('500') || errorString.contains('server')) {
+        errorMessage = 'Error del servidor. Inténtalo más tarde.';
+        backgroundColor = AppColors.warning;
+        errorIcon = Icons.cloud_off;
+      } else if (errorString.contains('permission') || errorString.contains('storage')) {
+        errorMessage = 'Error al guardar la imagen. Verifica los permisos de almacenamiento.';
+        backgroundColor = Colors.orange;
+        errorIcon = Icons.folder_off;
+      } else if (errorString.contains('space') || errorString.contains('full')) {
+        errorMessage = 'No hay suficiente espacio de almacenamiento.';
+        backgroundColor = Colors.orange;
+        errorIcon = Icons.storage;
+      } else {
+        // Error genérico con información útil
+        errorMessage = 'Error al descargar: ${e.toString().length > 100 ? e.toString().substring(0, 100) + "..." : e.toString()}';
+      }
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(errorIcon, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    errorMessage,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: backgroundColor,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Reintentar',
+              textColor: Colors.white,
+              onPressed: () => _downloadImageWithMetadata(context),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  // Guardar imagen en MediaStore (Android)
+  Future<void> _saveImageToMediaStore(Uint8List imageBytes, String fileName, String clase) async {
+    const platform = MethodChannel('biodetect/mediastore');
+    
+    try {
+      await platform.invokeMethod('saveImage', {
+        'bytes': imageBytes,
+        'fileName': '$fileName.jpg',
+        'mimeType': 'image/jpeg',
+        'collection': 'DCIM/BioDetect/$clase', // Organizado por clase taxonómica
+      });
+    } catch (e) {
+      throw Exception('Error guardando imagen en MediaStore: $e');
+    }
+  }
+
+  // Guardar metadatos como documento (Android)
+  Future<void> _saveMetadataToMediaStore(String fileName, Map<String, dynamic> registro, String clase) async {
+    const platform = MethodChannel('biodetect/mediastore');
+    
+    // Generar contenido de metadatos
+    final metadata = _generateBitacoraMetadataContent(fileName, registro);
+    
+    try {
+      await platform.invokeMethod('saveDocument', {
+        'content': metadata,
+        'fileName': '${fileName}_metadata.txt',
+        'mimeType': 'text/plain',
+        'collection': 'Documents/BioDetect/$clase', // Organizado por clase taxonómica
+      });
+    } catch (e) {
+      print('Error guardando metadatos en MediaStore: $e');
+      // No lanzar excepción para que la imagen se guarde aunque fallen los metadatos
+    }
+  }
+
+  // Generar contenido de metadatos específico para bitácoras
+  String _generateBitacoraMetadataContent(String fileName, Map<String, dynamic> registro) {
+    // Formatear coordenadas respetando la visibilidad
+    String coordenadas = 'No disponibles';
+    final locationVisibility = registro['locationVisibility'] ?? 'Privada';
+    
+    if (locationVisibility == 'Privada') {
+      coordenadas = 'No disponible';
+    } else if (registro['coords'] != null) {
+      final lat = registro['coords']['x'];
+      final lon = registro['coords']['y'];
+      if (lat != null && lon != null && (lat != 0 || lon != 0)) {
+        coordenadas = '${lat.toStringAsFixed(6)}°, ${lon.toStringAsFixed(6)}°';
+      }
+    }
+    
+    // Formatear fecha de creación
+    String fechaCreacion = 'No disponible';
+    try {
+      if (registro['uploadedAt'] != null) {
+        final date = registro['uploadedAt'];
+        final dt = date is DateTime ? date : date.toDate();
+        fechaCreacion = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      }
+    } catch (_) {}
+    
+    // Formatear fecha de modificación
+    String fechaModificacion = '';
+    try {
+      if (registro['lastModifiedAt'] != null) {
+        final date = registro['lastModifiedAt'];
+        final dt = date is DateTime ? date : date.toDate();
+        fechaModificacion = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      }
+    } catch (_) {}
+    
+    // Formatear fecha de sincronización
+    String fechaSincronizacion = 'No sincronizado';
+    try {
+      if (registro['syncedAt'] != null) {
+        final date = registro['syncedAt'];
+        final dt = date is DateTime ? date : date.toDate();
+        fechaSincronizacion = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      }
+    } catch (_) {}
+    
+    return '''
+=== METADATOS DE BITÁCORA BIODETECT ===
+Archivo de imagen: $fileName.jpg
+Fecha de descarga: ${DateTime.now().toString()}
+Tipo de documento: Registro de Bitácora
+
+=== INFORMACIÓN TAXONÓMICA ===
+Clase: ${registro['class'] ?? 'No especificada'}
+Orden: ${registro['taxonOrder'] ?? 'No especificado'}
+
+=== INFORMACIÓN DEL HALLAZGO ===
+Hábitat: ${registro['habitat'] ?? 'No especificado'}
+Detalles: ${registro['details'] ?? 'Sin detalles'}
+Notas: ${registro['notes'] ?? 'Sin notas'}
+
+=== INFORMACIÓN GEOGRÁFICA ===
+Visibilidad de ubicación: $locationVisibility
+Coordenadas: $coordenadas
+
+=== FECHAS ===
+Fecha de creación: $fechaCreacion${fechaModificacion.isNotEmpty ? '\nÚltima modificación: $fechaModificacion' : ''}
+
+=== SINCRONIZACIÓN ===
+Estado: ${registro['syncedAt'] != null ? 'Sincronizado con Google Drive' : 'Sin sincronizar'}
+Fecha de sincronización: $fechaSincronizacion
+
+=== INFORMACIÓN DE BITÁCORA ===
+Parte de una bitácora de investigación de biodiversidad
+Documento científico con fines de estudio y conservación
+''';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download, color: Colors.white),
+            onPressed: () => _downloadImageWithMetadata(context),
+            tooltip: 'Descargar imagen con metadatos de bitácora',
+          ),
+        ],
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          panEnabled: true,
+          scaleEnabled: true,
+          minScale: 0.5,
+          maxScale: 4.0,
+          child: CachedNetworkImage(
+            imageUrl: imageUrl,
+            fit: BoxFit.contain,
+            width: double.infinity,
+            height: double.infinity,
+            placeholder: (context, url) => const Center(
+              child: CircularProgressIndicator(
+                color: Colors.white,
+              ),
+            ),
+            errorWidget: (context, url, error) => const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    color: Colors.white,
+                    size: 64,
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Error al cargar la imagen',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

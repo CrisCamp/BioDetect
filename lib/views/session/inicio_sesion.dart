@@ -26,8 +26,8 @@ class _InicioSesionState extends State<InicioSesion> {
   @override
   void initState() {
     super.initState();
-    _loadRememberPreference(); // <-- Cargar preferencia al iniciar
-    _checkAutoLogin(); // <-- Verificar login automático
+    _loadRememberPreference();
+    _checkAutoLogin();
   }
 
   @override
@@ -37,7 +37,6 @@ class _InicioSesionState extends State<InicioSesion> {
     super.dispose();
   }
 
-  // Cargar preferencia de "recordar sesión"
   Future<void> _loadRememberPreference() async {
     final prefs = await SharedPreferences.getInstance();
     final savedEmail = prefs.getString('saved_email') ?? '';
@@ -51,13 +50,11 @@ class _InicioSesionState extends State<InicioSesion> {
     });
   }
 
-  // Verificar si hay una sesión activa para login automático (SIMPLIFICADO)
   Future<void> _checkAutoLogin() async {
     final prefs = await SharedPreferences.getInstance();
     final autoLogin = prefs.getBool('auto_login') ?? false;
     final user = FirebaseAuth.instance.currentUser;
 
-    // Solo hacer auto-login si está explícitamente habilitado Y hay usuario
     if (user != null && autoLogin) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -68,38 +65,53 @@ class _InicioSesionState extends State<InicioSesion> {
         }
       });
     }
-    // Ya no necesitas hacer logout aquí porque main.dart se encarga
   }
 
-  // Guardar preferencias de "recordar sesión"
   Future<void> _saveRememberPreference(String email, bool remember) async {
     final prefs = await SharedPreferences.getInstance();
 
     if (remember) {
-      // Guardar email y preferencias
       await prefs.setString('saved_email', email);
       await prefs.setBool('remember_me', true);
       await prefs.setBool('auto_login', true);
     } else {
-      // Limpiar preferencias
       await prefs.remove('saved_email');
       await prefs.setBool('remember_me', false);
       await prefs.setBool('auto_login', false);
     }
   }
 
-  // Función para login con correo/contraseña (CORREGIDA)
   Future<void> _onLogin() async {
-    if (_emailController.text.trim().isEmpty || _passwordController.text.isEmpty) {
+    if (!mounted) return;
+
+    setState(() {
+      _error = null;
+    });
+
+    
+    if (_emailController.text.trim().isEmpty) {
       setState(() {
-        _error = 'Por favor completa todos los campos.';
+        _error = 'Por favor ingresa tu correo electrónico.';
+      });
+      return;
+    }
+
+    if (_passwordController.text.isEmpty) {
+      setState(() {
+        _error = 'Por favor ingresa tu contraseña.';
+      });
+      return;
+    }
+
+    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(_emailController.text.trim())) {
+      setState(() {
+        _error = 'Por favor ingresa un correo electrónico válido.';
       });
       return;
     }
 
     setState(() {
       _loading = true;
-      _error = null;
     });
 
     try {
@@ -111,21 +123,19 @@ class _InicioSesionState extends State<InicioSesion> {
       final user = credential.user;
       if (user != null) {
         if (!user.emailVerified) {
-          // Reenviar correo de verificación
           await user.sendEmailVerification();
-          
+
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('auto_login', false);
-          
+
           setState(() {
             _error = 'Debes verificar tu correo antes de continuar. Te hemos reenviado el enlace de verificación.';
           });
-          
+
           await FirebaseAuth.instance.signOut();
           return;
         }
 
-        // Crear/actualizar documento del usuario (solo si está verificado)
         final userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
         final docSnapshot = await userDoc.get();
 
@@ -150,7 +160,6 @@ class _InicioSesionState extends State<InicioSesion> {
           await _createUserActivityDocument(user.uid);
         }
         await _saveRememberPreference(_emailController.text.trim(), _remember);
-        // Navegar al menu principal
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -161,23 +170,29 @@ class _InicioSesionState extends State<InicioSesion> {
     } on FirebaseAuthException catch (e) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('auto_login', false);
-      
+
       setState(() {
         switch (e.code) {
           case 'user-not-found':
-            _error = 'No existe una cuenta con este correo.';
+            _error = 'No existe una cuenta registrada con este correo electrónico.';
             break;
           case 'wrong-password':
-            _error = 'La contraseña es incorrecta.';
+            _error = 'La contraseña es incorrecta. Verifica e intenta de nuevo.';
             break;
           case 'invalid-email':
-            _error = 'El correo no es válido.';
+            _error = 'El formato del correo electrónico no es válido.';
             break;
           case 'invalid-credential':
-            _error = 'Correo o contraseña incorrectos.';
+            _error = 'Correo o contraseña incorrectos. Verifica tus datos.';
             break;
           case 'too-many-requests':
-            _error = 'Demasiados intentos fallidos. Intenta de nuevo más tarde.';
+            _error = 'Demasiados intentos fallidos. Espera unos minutos antes de intentar de nuevo.';
+            break;
+          case 'network-request-failed':
+            _error = 'Error de conexión. Verifica tu internet e intenta de nuevo.';
+            break;
+          case 'user-disabled':
+            _error = 'Esta cuenta ha sido deshabilitada. Contacta al soporte.';
             break;
           default:
             _error = 'No se pudo iniciar sesión. Verifica tus datos e inténtalo de nuevo.';
@@ -186,9 +201,9 @@ class _InicioSesionState extends State<InicioSesion> {
     } catch (e) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('auto_login', false);
-      
+
       setState(() {
-        _error = 'Error inesperado: $e';
+        _error = 'Error inesperado. Por favor intenta de nuevo más tarde.';
       });
     } finally {
       setState(() {
@@ -197,8 +212,9 @@ class _InicioSesionState extends State<InicioSesion> {
     }
   }
 
-  // Función para login con Google (CORREGIDA - Google no requiere verificación de email)
   Future<void> _onGoogleSignIn() async {
+    if (!mounted) return;
+
     setState(() {
       _loading = true;
       _error = null;
@@ -206,18 +222,20 @@ class _InicioSesionState extends State<InicioSesion> {
 
     try {
       await GoogleSignIn().signOut();
-      
+
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
 
       if (googleUser == null) {
-        setState(() {
-          _loading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _loading = false;
+          });
+        }
         return;
       }
 
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      
+
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
@@ -227,7 +245,6 @@ class _InicioSesionState extends State<InicioSesion> {
       final user = userCredential.user;
 
       if (user != null) {
-        // Crear/actualizar documento del usuario
         final userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
         final docSnapshot = await userDoc.get();
 
@@ -241,7 +258,7 @@ class _InicioSesionState extends State<InicioSesion> {
             'loginAt': FieldValue.serverTimestamp(),
             'badges': [],
           });
-          
+
           await _createUserActivityDocument(user.uid);
         } else {
           await userDoc.update({
@@ -249,7 +266,6 @@ class _InicioSesionState extends State<InicioSesion> {
           });
         }
         await _saveRememberPreference(user.email ?? '', _remember);
-        // Navegar al menu principal
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -260,43 +276,59 @@ class _InicioSesionState extends State<InicioSesion> {
     } on FirebaseAuthException catch (e) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('auto_login', false);
-      
-      setState(() {
-        switch (e.code) {
-          case 'account-exists-with-different-credential':
-            _error = 'Ya existe una cuenta con este correo usando otro método.';
-            break;
-          case 'invalid-credential':
-            _error = 'Las credenciales de Google son inválidas.';
-            break;
-          case 'operation-not-allowed':
-            _error = 'El login con Google no está habilitado.';
-            break;
-          case 'network-request-failed':
-            _error = 'Error de conexión. Verifica tu internet e intenta de nuevo.';
-            break;
-          default:
-            _error = e.message ?? 'Error al iniciar sesión con Google.';
-        }
-      });
+
+      if (mounted) {
+        setState(() {
+          switch (e.code) {
+            case 'account-exists-with-different-credential':
+              _error = 'Ya existe una cuenta con este correo usando otro método de inicio de sesión.';
+              break;
+            case 'invalid-credential':
+              _error = 'Error con las credenciales de Google. Intenta de nuevo.';
+              break;
+            case 'operation-not-allowed':
+              _error = 'El inicio de sesión con Google no está disponible en este momento.';
+              break;
+            case 'network-request-failed':
+              _error = 'Para iniciar sesión con Google necesitas conexión a internet. Puedes mantener la sesión activa seleccionando "Recordar sesión".';
+              break;
+            default:
+              _error = 'Error al iniciar sesión con Google.';
+          }
+        });
+      }
     } catch (e) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('auto_login', false);
-      
-      setState(() {
-        _error = 'Error inesperado: $e';
-      });
+
+      if (mounted) {
+        setState(() {
+          String errorMessage = e.toString().toLowerCase();
+          
+          if (errorMessage.contains('network') || 
+              errorMessage.contains('connection') || 
+              errorMessage.contains('internet') ||
+              errorMessage.contains('apiexception: 7')) {
+            _error = 'Para iniciar sesión con Google necesitas una conexión estable a internet. Puedes mantener tu sesión activa seleccionando "Recordar sesión".';
+          } else if (errorMessage.contains('cancelled') || errorMessage.contains('user_cancelled')) {
+            _error = 'Inicio de sesión cancelado. Intenta de nuevo si lo deseas.';
+          } else {
+            _error = 'Error al conectar con Google. Verifica tu conexión a internet e intenta de nuevo.';
+          }
+        });
+      }
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
-  // Crear documento user_activity para usuarios de Google también
   Future<void> _createUserActivityDocument(String userId) async {
     final activityDoc = FirebaseFirestore.instance.collection('user_activity').doc(userId);
-    
+
     await activityDoc.set({
       'userId': userId,
       'fieldNotesCreated': 0,
@@ -312,13 +344,11 @@ class _InicioSesionState extends State<InicioSesion> {
           'Insecta': 0,
         },
         'byTaxon': {
-          // Arachnida (5 órdenes)
           'Acari': 0,
           'Amblypygi': 0,
           'Araneae': 0,
-          'Scorpions': 0,
+          'Scorpiones': 0,
           'Solifugae': 0,
-          // Insecta (5 órdenes)
           'Dermaptera': 0,
           'Lepidoptera': 0,
           'Mantodea': 0,
@@ -334,10 +364,11 @@ class _InicioSesionState extends State<InicioSesion> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.backgroundPrimary,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundLightGradient,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: AppColors.backgroundPrimary,
         padding: const EdgeInsets.all(16),
         child: Stack(
           children: [
@@ -348,47 +379,60 @@ class _InicioSesionState extends State<InicioSesion> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Logo
                       Image.asset(
                         'assets/ic_logo_biodetect.png',
                         width: 120,
                         height: 120,
                       ),
                       const SizedBox(height: 24),
-                      // Campo: Correo Electrónico
                       TextFormField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
                         decoration: InputDecoration(
                           hintText: 'Correo',
                           filled: true,
-                          fillColor: AppColors.slateGreen,
-                          hintStyle: const TextStyle(color: AppColors.textWhite),
+                          fillColor: AppColors.inputBackground,
+                          hintStyle: const TextStyle(color: AppColors.inputHint),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorderFocused, width: 2.5),
                           ),
                         ),
                         style: const TextStyle(color: AppColors.textWhite),
                       ),
                       const SizedBox(height: 16),
-                      // Campo: Contraseña con ojo dinámico
                       TextFormField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
                         decoration: InputDecoration(
                           hintText: 'Contraseña',
                           filled: true,
-                          fillColor: AppColors.slateGreen,
-                          hintStyle: const TextStyle(color: AppColors.textWhite),
+                          fillColor: AppColors.inputBackground,
+                          hintStyle: const TextStyle(color: AppColors.inputHint),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorder, width: 1.5),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.inputBorderFocused, width: 2.5),
                           ),
                           suffixIcon: IconButton(
                             icon: Icon(
                               _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                              color: AppColors.textWhite.withValues(alpha: 0.7),
+                              color: AppColors.inputHint,
                             ),
                             onPressed: () {
                               setState(() {
@@ -400,7 +444,6 @@ class _InicioSesionState extends State<InicioSesion> {
                         style: const TextStyle(color: AppColors.textWhite),
                       ),
                       const SizedBox(height: 8),
-                      // Recordar sesión (actualizado)
                       Row(
                         children: [
                           Checkbox(
@@ -410,153 +453,143 @@ class _InicioSesionState extends State<InicioSesion> {
                                 _remember = value ?? false;
                               });
                             },
-                            activeColor: AppColors.buttonGreen2,
-                            checkColor: AppColors.textBlack,
+                            activeColor: AppColors.buttonGreen1,
+                            checkColor: AppColors.textWhite,
+                            side: BorderSide(color: AppColors.inputBorder),
                           ),
                           const Text(
                             'Recordar sesión',
                             style: TextStyle(color: AppColors.textWhite),
                           ),
-                          // Agregar icono de información
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: GestureDetector(
-                              onTap: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Mantiene tu sesión activa para no tener que iniciar sesión cada vez.',
-                                      style: TextStyle(color: AppColors.textWhite),
-                                    ),
-                                    backgroundColor: AppColors.slateGreen,
-                                    duration: Duration(seconds: 3),
-                                  ),
-                                );
-                              },
-                              child: Icon(
-                                Icons.info_outline,
-                                size: 16,
-                                color: AppColors.textWhite.withValues(alpha: 0.7),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const RecuperarContrasena()),
+                              );
+                            },
+                            child: const Text(
+                              '¿Olvidaste tu contraseña?',
+                              style: TextStyle(
+                                color: AppColors.textBlueNormal,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
                         ],
                       ),
-                      // Mensaje de error
                       if (_error != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(
-                              color: AppColors.warning,
-                              fontSize: 12,
-                            ),
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.warning, width: 1),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline, color: AppColors.warning, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _error!,
+                                  style: const TextStyle(
+                                    color: AppColors.textWhite,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      // Botón: Iniciar Sesión
+                      const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
+                        height: 48,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.buttonGreen2,
-                            foregroundColor: AppColors.textBlack,
-                            minimumSize: const Size(0, 48),
+                            backgroundColor: AppColors.buttonGreen1,
+                            foregroundColor: AppColors.textWhite,
+                            textStyle: const TextStyle(fontWeight: FontWeight.bold),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
+                            elevation: 4,
                           ),
                           onPressed: _loading ? null : _onLogin,
                           child: const Text(
-                            'Iniciar sesión',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                            'Iniciar Sesión',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                         ),
                       ),
                       const SizedBox(height: 16),
-                      // ¿Olvidaste tu contraseña?
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const RecuperarContrasena(),
-                            ),
-                          );
-                        },
-                        child: const Text(
-                          '¿Olvidaste tu contraseña?',
-                          style: TextStyle(
-                            color: AppColors.textWhite,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // Separador estilizado
                       Row(
                         children: [
                           Expanded(
                             child: Container(
                               height: 1,
-                              color: AppColors.brownDark3,
+                              color: AppColors.borderColor.withOpacity(0.3),
                             ),
                           ),
                           const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            padding: EdgeInsets.symmetric(horizontal: 16),
                             child: Text(
                               'O',
-                              style: TextStyle(color: AppColors.textWhite),
+                              style: TextStyle(
+                                color: AppColors.textPaleGreen,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                           Expanded(
                             child: Container(
                               height: 1,
-                              color: AppColors.brownDark3,
+                              color: AppColors.borderColor.withOpacity(0.3),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
-                      // Botón: Iniciar con Google
                       SizedBox(
                         width: double.infinity,
+                        height: 48,
                         child: ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.white,
-                            foregroundColor: AppColors.textBlack,
-                            minimumSize: const Size(0, 48),
+                            backgroundColor: AppColors.backgroundCardLight,
+                            foregroundColor: AppColors.textWhite,
+                            textStyle: const TextStyle(fontWeight: FontWeight.bold),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
+                              side: BorderSide(color: AppColors.inputBorder),
                             ),
+                            elevation: 2,
                           ),
                           icon: Image.asset(
                             'assets/ic_google.png',
-                            width: 24,
                             height: 24,
                           ),
                           label: const Text(
                             'Continuar con Google',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                           onPressed: _loading ? null : _onGoogleSignIn,
                         ),
                       ),
                       const SizedBox(height: 16),
-                      // ¿No tienes cuenta? Regístrate
                       GestureDetector(
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(
-                              builder: (context) => const Registro(),
-                            ),
+                            MaterialPageRoute(builder: (_) => const Registro()),
                           );
                         },
                         child: const Text(
                           '¿No tienes cuenta? Regístrate',
                           style: TextStyle(
-                            color: AppColors.textWhite,
+                            color: AppColors.textBlueNormal,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -566,13 +599,12 @@ class _InicioSesionState extends State<InicioSesion> {
                 ),
               ),
             ),
-            // ProgressBar para carga
             if (_loading)
               Container(
                 color: Colors.black26,
                 child: const Center(
                   child: CircularProgressIndicator(
-                    color: AppColors.mintGreen,
+                    color: AppColors.buttonGreen1,
                   ),
                 ),
               ),
