@@ -48,7 +48,7 @@ class _MainMenuState extends State<MainMenu> with TickerProviderStateMixin {
       // Animar suavemente a la nueva página
       _pageController.animateToPage(
         index,
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
       );
     }
@@ -82,19 +82,19 @@ class _MainMenuState extends State<MainMenu> with TickerProviderStateMixin {
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.photo_library),
-            label: 'Album',
+            label: 'Álbum',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.forum),
-            label: 'Forum',
+            label: 'Foro',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.assignment),
-            label: 'Binnacle',
+            label: 'Bitácoras',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person),
-            label: 'Profile',
+            label: 'Perfil',
           ),
         ],
       ),

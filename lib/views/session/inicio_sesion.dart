@@ -67,17 +67,21 @@ class _InicioSesionState extends State<InicioSesion> {
     }
   }
 
-  Future<void> _saveRememberPreference(String email, bool remember) async {
+  Future<void> _saveRememberPreference(String email, bool remember, {bool? removeAds}) async {
     final prefs = await SharedPreferences.getInstance();
 
     if (remember) {
       await prefs.setString('saved_email', email);
       await prefs.setBool('remember_me', true);
       await prefs.setBool('auto_login', true);
+      if (removeAds != null) {
+        await prefs.setBool('remove_ads', removeAds);
+      }
     } else {
       await prefs.remove('saved_email');
       await prefs.setBool('remember_me', false);
       await prefs.setBool('auto_login', false);
+      await prefs.remove('remove_ads');
     }
   }
 
@@ -147,6 +151,10 @@ class _InicioSesionState extends State<InicioSesion> {
           await userDoc.update({
             'loginAt': FieldValue.serverTimestamp(),
           });
+          
+          // Cargar el valor de removeAds desde Firestore para guardarlo en SharedPreferences
+          final removeAds = data?['removeAds'] ?? false;
+          await _saveRememberPreference(_emailController.text.trim(), _remember, removeAds: removeAds);
         } else {
           await userDoc.set({
             'uid': user.uid,
@@ -156,10 +164,11 @@ class _InicioSesionState extends State<InicioSesion> {
             'createdAt': FieldValue.serverTimestamp(),
             'loginAt': FieldValue.serverTimestamp(),
             'badges': [],
+            'removeAds': false,
           });
           await _createUserActivityDocument(user.uid);
+          await _saveRememberPreference(_emailController.text.trim(), _remember, removeAds: false);
         }
-        await _saveRememberPreference(_emailController.text.trim(), _remember);
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -257,15 +266,21 @@ class _InicioSesionState extends State<InicioSesion> {
             'createdAt': FieldValue.serverTimestamp(),
             'loginAt': FieldValue.serverTimestamp(),
             'badges': [],
+            'removeAds': false,
           });
 
           await _createUserActivityDocument(user.uid);
+          await _saveRememberPreference(user.email ?? '', _remember, removeAds: false);
         } else {
           await userDoc.update({
             'loginAt': FieldValue.serverTimestamp(),
           });
+          
+          // Cargar el valor de removeAds desde Firestore para guardarlo en SharedPreferences
+          final data = docSnapshot.data();
+          final removeAds = data?['removeAds'] ?? false;
+          await _saveRememberPreference(user.email ?? '', _remember, removeAds: removeAds);
         }
-        await _saveRememberPreference(user.email ?? '', _remember);
         if (mounted) {
           Navigator.pushReplacement(
             context,

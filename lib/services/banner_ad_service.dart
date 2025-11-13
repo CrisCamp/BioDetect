@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Servicio centralizado para gestionar banners de anuncios
 /// 
@@ -16,6 +17,21 @@ class BannerAdService {
   static const String _androidAdUnitId = 'ca-app-pub-2455614119782029/5903033792';
   static const String _iosAdUnitId = 'ca-app-pub-3940256099942544/2934735716';
 
+  /// Verifica si se deben mostrar anuncios basándose en las preferencias del usuario
+  /// 
+  /// Retorna true si removeAds es false o no existe
+  /// Retorna false si removeAds es true
+  static Future<bool> shouldShowAds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final removeAds = prefs.getBool('remove_ads') ?? false;
+      return !removeAds; // Mostrar anuncios si removeAds es false o no existe
+    } catch (e) {
+      print('Error al verificar preferencias de anuncios: $e');
+      return true; // Por defecto, mostrar anuncios si hay error
+    }
+  }
+
   /// Getter para verificar si el banner está listo
   bool get isBannerAdReady => _isBannerAdReady;
   
@@ -26,10 +42,18 @@ class BannerAdService {
   /// 
   /// [onAdLoaded] - Callback que se ejecuta cuando el anuncio se carga correctamente
   /// [onAdFailedToLoad] - Callback que se ejecuta cuando falla la carga del anuncio
-  void initializeBannerAd({
+  Future<void> initializeBannerAd({
     VoidCallback? onAdLoaded,
     Function(String)? onAdFailedToLoad,
-  }) {
+  }) async {
+    // Verificar si se deben mostrar anuncios
+    final showAds = await shouldShowAds();
+    if (!showAds) {
+      print('🚫 Anuncios deshabilitados por preferencias del usuario');
+      _isBannerAdReady = false;
+      return;
+    }
+
     _onAdLoaded = onAdLoaded;
     _onAdFailedToLoad = onAdFailedToLoad;
 
@@ -107,9 +131,9 @@ class BannerAdService {
   /// Recarga el banner de anuncio
   /// 
   /// Útil para refrescar el anuncio después de un error o para mostrar nuevo contenido
-  void reloadBanner() {
+  Future<void> reloadBanner() async {
     dispose();
-    initializeBannerAd(
+    await initializeBannerAd(
       onAdLoaded: _onAdLoaded,
       onAdFailedToLoad: _onAdFailedToLoad,
     );
@@ -127,11 +151,11 @@ mixin BannerAdMixin<T extends StatefulWidget> on State<T> {
   BannerAdService get bannerAdService => _bannerAdService;
 
   /// Inicializa el banner con callbacks opcionales
-  void initializeBanner({
+  Future<void> initializeBanner({
     VoidCallback? onAdLoaded,
     Function(String)? onAdFailedToLoad,
-  }) {
-    _bannerAdService.initializeBannerAd(
+  }) async {
+    await _bannerAdService.initializeBannerAd(
       onAdLoaded: onAdLoaded ?? _defaultOnAdLoaded,
       onAdFailedToLoad: onAdFailedToLoad ?? _defaultOnAdFailedToLoad,
     );
@@ -191,7 +215,11 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   @override
   void initState() {
     super.initState();
-    _bannerAdService.initializeBannerAd(
+    _initializeBanner();
+  }
+
+  Future<void> _initializeBanner() async {
+    await _bannerAdService.initializeBannerAd(
       onAdLoaded: () {
         widget.onAdLoaded?.call();
         if (mounted) setState(() {});

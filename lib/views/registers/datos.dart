@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'package:biodetect/themes.dart';
 import 'package:biodetect/services/profile_notifier.dart';
+import 'package:biodetect/services/ai_service.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -15,8 +16,8 @@ class RegDatos extends StatefulWidget {
   final File? imageFile;
   final String? photoId;
   final String? imageUrl;
-  final String claseArtropodo;
-  final String ordenTaxonomico;
+  final String? claseArtropodo;
+  final String? ordenTaxonomico;
   final Map<String, dynamic>? datosIniciales;
   final Map<String, double>? coordenadas;
 
@@ -25,8 +26,8 @@ class RegDatos extends StatefulWidget {
     this.imageFile,
     this.photoId,
     this.imageUrl,
-    required this.claseArtropodo,
-    required this.ordenTaxonomico,
+    this.claseArtropodo,
+    this.ordenTaxonomico,
     this.datosIniciales,
     this.coordenadas,
   });
@@ -60,6 +61,7 @@ class _RegDatosState extends State<RegDatos> {
   bool _isProcessing = false;
   bool _hasInternet = true;
   bool _isGettingLocation = false;
+  bool _isAnalyzing = false;
   Map<String, double> _coords = {};
   
   // Contadores de caracteres para los campos de texto
@@ -94,8 +96,8 @@ class _RegDatosState extends State<RegDatos> {
       }
     }
     
-    className = widget.claseArtropodo;
-    taxonOrder = widget.ordenTaxonomico;
+    className = widget.claseArtropodo ?? '';
+    taxonOrder = widget.ordenTaxonomico ?? '';
     currentImageUrl = widget.imageUrl;
 
     // Inicializar visibilidad de ubicación según el modo
@@ -574,6 +576,37 @@ class _RegDatosState extends State<RegDatos> {
       return;
     }
 
+    // Validaciones adicionales para clase, orden y hábitat
+    if (className.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, selecciona una clase de artrópodo'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    if (taxonOrder.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, selecciona un orden taxonómico'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    if (habitat.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, selecciona un hábitat'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
     // VERIFICACIÓN 1: Conexión inicial antes de mostrar proceso
     print('🔍 Verificando conexión inicial antes de ${_isEditing ? 'actualizar' : 'guardar'}...');
     await _checkInternetConnection();
@@ -607,8 +640,9 @@ class _RegDatosState extends State<RegDatos> {
     if (user == null) return;
 
     // Sincronizar valores de los controllers con las variables globales
-    details = _detailsController.text;
-    notes = _notesController.text;
+    // Si están vacíos, usar valores por defecto
+    details = _detailsController.text.trim().isEmpty ? 'Sin detalles' : _detailsController.text.trim();
+    notes = _notesController.text.trim().isEmpty ? 'Sin notas' : _notesController.text.trim();
 
     setState(() => _isProcessing = true);
 
@@ -1269,6 +1303,196 @@ class _RegDatosState extends State<RegDatos> {
     _updateNotesCharCount(limitedText);
   }
 
+  // Verificar si el error es relacionado con la conexión
+  bool _isConnectionError(dynamic error) {
+    final errorString = error.toString().toLowerCase();
+    return errorString.contains('network') || 
+           errorString.contains('connection') || 
+           errorString.contains('internet') ||
+           errorString.contains('timeout') ||
+           errorString.contains('failed host lookup') ||
+           errorString.contains('socketexception') ||
+           errorString.contains('httpexception') ||
+           errorString.contains('clientexception') ||
+           errorString.contains('no address associated with hostname') ||
+           errorString.contains('unreachable');
+  }
+
+  // Función para analizar la imagen con IA
+  Future<void> _analizarImagen() async {
+    if (_isAnalyzing || _isProcessing) return;
+    if (widget.imageFile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay imagen disponible para analizar'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    // Verificar conexión a internet
+    await _checkInternetConnection();
+    if (!_hasInternet) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Se requiere conexión a internet para analizar la imagen'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isAnalyzing = true);
+
+    try {
+      // Verificación adicional de conexión justo antes del análisis
+      await _checkInternetConnection();
+      
+      if (!_hasInternet) {
+        throw Exception('Se perdió la conexión a internet durante el análisis');
+      }
+
+      final Map<String, dynamic> response = await AIService.analyzeImage(widget.imageFile!);
+
+      final String clasificacion = response['predicted_class'];
+      final double confianza = response['confidence'];
+
+      final List<String> taxonomia = clasificacion.split('-');
+      final String claseArtropodo = taxonomia[0];
+      final String ordenTaxonomico = taxonomia[1];
+
+      if (mounted) {
+        if (confianza >= 0.75) {
+          // Análisis exitoso - rellenar campos automáticamente
+          setState(() {
+            className = claseArtropodo;
+            taxonOrder = ordenTaxonomico;
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Análisis completado\nClase: $claseArtropodo, Orden: $ordenTaxonomico\nConfianza: ${(confianza * 100).toStringAsFixed(2)}%'),
+              backgroundColor: AppColors.buttonGreen2,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else {
+          // Confianza baja - mostrar opciones
+          await _mostrarOpcionesBajaConfianza(claseArtropodo, ordenTaxonomico, confianza);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMessage = 'Error al analizar la imagen';
+        
+        if (_isConnectionError(e)) {
+          await _checkInternetConnection();
+          errorMessage = 'Error de conexión. Verifica tu conexión a internet e inténtalo de nuevo.';
+        } else {
+          errorMessage = 'Error al analizar: ${e.toString()}';
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: AppColors.warning,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isAnalyzing = false);
+    }
+  }
+
+  // Mostrar opciones cuando la confianza es baja
+  Future<void> _mostrarOpcionesBajaConfianza(
+    String claseArtropodo,
+    String ordenTaxonomico,
+    double confianza
+  ) async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: AppColors.backgroundCard,
+          title: const Text(
+            'Confianza Insuficiente',
+            style: TextStyle(color: AppColors.textWhite),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'El nivel de confianza es insuficiente para una clasificación automática.',
+                style: TextStyle(color: AppColors.textWhite),
+              ),
+              const SizedBox(height: 8),
+              RichText(
+                text: TextSpan(
+                  style: const TextStyle(color: AppColors.textWhite),
+                  children: [
+                    const TextSpan(
+                      text: 'Clase sugerida: ',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    TextSpan(text: claseArtropodo),
+                    const TextSpan(
+                      text: '\nOrden sugerido: ',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    TextSpan(text: ordenTaxonomico),
+                    const TextSpan(
+                      text: '\nConfianza: ',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    TextSpan(
+                      text: '${(confianza * 100).toStringAsFixed(2)}%',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text(
+                'Usar sugerencia',
+                style: TextStyle(color: AppColors.buttonGreen2),
+              ),
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                setState(() {
+                  className = claseArtropodo;
+                  taxonOrder = ordenTaxonomico;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Campos rellenados con la sugerencia de la IA'),
+                    backgroundColor: AppColors.buttonGreen2,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              },
+            ),
+            TextButton(
+              child: const Text(
+                'Seleccionar manualmente',
+                style: TextStyle(color: AppColors.textPaleGreen),
+              ),
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1393,7 +1617,7 @@ class _RegDatosState extends State<RegDatos> {
                                       child: DropdownButtonFormField<String>(
                                         value: _getValidClassesValue(),
                                         decoration: InputDecoration(
-                                          hintText: 'Arachnida',
+                                          hintText: 'Selecciona una opción',
                                           labelStyle: const TextStyle(color: AppColors.textWhite),
                                           filled: true,
                                           fillColor: _isProcessing
@@ -1445,7 +1669,7 @@ class _RegDatosState extends State<RegDatos> {
                                       child: DropdownButtonFormField<String>(
                                         value: _getValidTaxonValue(),
                                         decoration: InputDecoration(
-                                          hintText: 'Araneae',
+                                          hintText: 'Selecciona una opción',
                                           labelStyle: const TextStyle(color: AppColors.textWhite),
                                           filled: true,
                                           fillColor: _isProcessing || className.isEmpty
@@ -1476,6 +1700,39 @@ class _RegDatosState extends State<RegDatos> {
                                   ],
                                 ),
                                 const SizedBox(height: 16),
+                                // Botón de análisis con IA
+                                if (widget.imageFile != null) ...[
+                                  ElevatedButton.icon(
+                                    icon: _isAnalyzing
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              color: AppColors.textBlack,
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(Icons.auto_fix_high),
+                                    label: Text(
+                                      _isAnalyzing
+                                          ? 'Analizando...'
+                                          : 'Analizar con IA',
+                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: _isAnalyzing || !_hasInternet
+                                          ? AppColors.textPaleGreen.withValues(alpha: 0.7)
+                                          : AppColors.textPaleGreen,
+                                      foregroundColor: AppColors.textBlack,
+                                      minimumSize: const Size(double.infinity, 48),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    onPressed: (_isAnalyzing || _isProcessing || !_hasInternet) ? null : _analizarImagen,
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
                                 // Coordenadas mejoradas
                                 Container(
                                   padding: const EdgeInsets.all(16),
@@ -1688,7 +1945,7 @@ class _RegDatosState extends State<RegDatos> {
                                       child: DropdownButtonFormField<String>(
                                         value: _getValidHabitatValue(),
                                         decoration: InputDecoration(
-                                          hintText: 'Ej: Bosques',
+                                          hintText: 'Selecciona una opción',
                                           labelStyle: const TextStyle(color: AppColors.textWhite),
                                           filled: true,
                                           fillColor: _isProcessing 
@@ -1823,7 +2080,7 @@ class _RegDatosState extends State<RegDatos> {
                                             borderRadius: BorderRadius.circular(8),
                                           ),
                                         ),
-                                        onPressed: _isProcessing ? null : () => Navigator.pop(context),
+                                        onPressed: (_isProcessing || _isAnalyzing) ? null : () => Navigator.pop(context),
                                         child: const Text(
                                           'Cancelar',
                                           style: TextStyle(fontWeight: FontWeight.bold),
@@ -1833,7 +2090,7 @@ class _RegDatosState extends State<RegDatos> {
                                     const SizedBox(width: 16),
                                     Expanded(
                                       child: ElevatedButton.icon(
-                                        icon: _isProcessing
+                                        icon: (_isProcessing || _isAnalyzing)
                                             ? const SizedBox(
                                                 width: 20,
                                                 height: 20,
@@ -1844,24 +2101,28 @@ class _RegDatosState extends State<RegDatos> {
                                               )
                                             : Icon(_isEditing ? Icons.update : Icons.save),
                                         label: Text(
-                                          _isProcessing
-                                              ? (_isEditing ? 'Actualizando...' : 'Guardando...')
-                                              : !_hasInternet
-                                                  ? 'Sin conexión'
-                                                  : (_isEditing ? 'Actualizar' : 'Guardar'),
+                                          _isAnalyzing
+                                              ? 'Analizando...'
+                                              : _isProcessing
+                                                  ? (_isEditing ? 'Actualizando...' : 'Guardando...')
+                                                  : !_hasInternet
+                                                      ? 'Sin conexión'
+                                                      : (_isEditing ? 'Actualizar' : 'Guardar'),
                                           style: const TextStyle(fontWeight: FontWeight.bold),
                                         ),
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: !_hasInternet 
                                               ? AppColors.warning.withValues(alpha: 0.7)
-                                              : AppColors.buttonGreen2,
+                                              : (_isAnalyzing || _isProcessing)
+                                                  ? AppColors.buttonGreen2.withValues(alpha: 0.7)
+                                                  : AppColors.buttonGreen2,
                                           foregroundColor: AppColors.textBlack,
                                           minimumSize: const Size(0, 48),
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(8),
                                           ),
                                         ),
-                                        onPressed: (_isProcessing || !_hasInternet) ? null : _guardarDatos,
+                                        onPressed: (_isProcessing || _isAnalyzing || !_hasInternet) ? null : _guardarDatos,
                                       ),
                                     ),
                                   ],

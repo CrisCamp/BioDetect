@@ -1211,7 +1211,7 @@ class FullScreenImageViewer extends StatelessWidget {
         'content': metadata,
         'fileName': '${fileName}_metadata.txt',
         'mimeType': 'text/plain',
-        'collection': 'Documents/BioDetect/$clase', // Organizado por clase taxonómica
+        'collection': 'Download/BioDetect/Metadatos/$clase', // Organizado por clase taxonómica
       });
     } catch (e) {
       print('Error guardando metadatos en MediaStore: $e');
@@ -1268,16 +1268,17 @@ class FullScreenImageViewer extends StatelessWidget {
     return '''
 === METADATOS DEL REGISTRO BIODETECT ===
 Archivo de imagen: $fileName.jpg
-Fecha de descarga: ${DateTime.now().toString()}
+Fecha de descarga: ${DateTime.now().toString().substring(0, 16)}
+Tipo de documento: Hallazgo personal
 
 === INFORMACIÓN TAXONÓMICA ===
 Clase: ${registro['class'] ?? 'No especificada'}
 Orden: ${registro['taxonOrder'] ?? 'No especificado'}
 
 === INFORMACIÓN DEL HALLAZGO ===
-Hábitat: ${registro['habitat'] ?? 'No especificado'}
-Detalles: ${registro['details'] ?? 'Sin detalles'}
-Notas: ${registro['notes'] ?? 'Sin notas'}
+Hábitat: ${(registro['habitat']?.toString().trim().isEmpty ?? true) ? 'No especificado' : registro['habitat']}
+Detalles: ${(registro['details']?.toString().trim().isEmpty ?? true) ? 'Sin detalles' : registro['details']}
+Notas: ${(registro['notes']?.toString().trim().isEmpty ?? true) ? 'Sin notas' : registro['notes']}
 
 === INFORMACIÓN GEOGRÁFICA ===
 Visibilidad de ubicación: $locationVisibility
