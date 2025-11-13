@@ -58,7 +58,7 @@ class _CapturaFotoState extends State<CapturaFoto> {
 
   Future<void> _checkInternetConnection() async {
     try {
-      final result = await InternetAddress.lookup('google.com');
+      final result = await InternetAddress.lookup('dns.google');
       setState(() {
         _hasInternet = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
       });
@@ -603,6 +603,46 @@ class _CapturaFotoState extends State<CapturaFoto> {
     }
   }
 
+  Future<void> _registrarManualmente() async {
+    if (_image == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Primero selecciona una foto.')),
+      );
+      return;
+    }
+
+    try {
+      final dynamic result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => RegDatos(
+            imageFile: _image!,
+            claseArtropodo: '', // Valores vacíos para registro manual
+            ordenTaxonomico: '', // Valores vacíos para registro manual
+            coordenadas: _currentPosition != null 
+                ? {'x': _currentPosition!.latitude, 'y': _currentPosition!.longitude} 
+                : null,
+          ),
+        ),
+      );
+
+      if (result == 'saved' && mounted) {
+        setState(() {
+          _image = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -624,7 +664,6 @@ class _CapturaFotoState extends State<CapturaFoto> {
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(
                           children: [
@@ -793,7 +832,6 @@ class _CapturaFotoState extends State<CapturaFoto> {
                                   ],
                                 ),
                         ),
-                        const SizedBox(height: 16),
                         if (_image == null) ...[
                           Card(
                             color: AppColors.backgroundCard,
@@ -867,107 +905,308 @@ class _CapturaFotoState extends State<CapturaFoto> {
                           ),
                           const SizedBox(height: 30),
                         ],
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.buttonGreen2,
-                                  foregroundColor: AppColors.textBlack,
-                                  elevation: 4,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
+                        // Botones de captura adaptables según si hay imagen o no
+                        _image == null
+                            ? Row(
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      icon: const Icon(
+                                        Icons.camera_alt,
+                                        color: AppColors.textBlack,
+                                        size: 22,
+                                      ),
+                                      label: const Text(
+                                        'Capturar',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: _isProcessing 
+                                            ? AppColors.buttonGreen2.withOpacity(0.5)
+                                            : AppColors.buttonGreen2,
+                                        foregroundColor: _isProcessing 
+                                            ? AppColors.textBlack.withOpacity(0.5)
+                                            : AppColors.textBlack,
+                                        elevation: _isProcessing ? 0 : 6,
+                                        shadowColor: AppColors.buttonGreen2.withOpacity(0.4),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        minimumSize: const Size(0, 52),
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                      ),
+                                      onPressed: _isProcessing ? null : _tomarFoto,
+                                    ),
                                   ),
-                                  minimumSize: const Size(0, 48),
-                                ),
-                                onPressed: _tomarFoto,
-                                child: const Text(
-                                  'Capturar',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.buttonBrown3,
-                                  foregroundColor: AppColors.textBlack,
-                                  elevation: 4,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      icon: const Icon(
+                                        Icons.photo_library,
+                                        color: AppColors.textBlack,
+                                        size: 22,
+                                      ),
+                                      label: const Text(
+                                        'Galería',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: _isProcessing 
+                                            ? AppColors.buttonBrown3.withOpacity(0.5)
+                                            : AppColors.buttonBrown3,
+                                        foregroundColor: _isProcessing 
+                                            ? AppColors.textBlack.withOpacity(0.5)
+                                            : AppColors.textBlack,
+                                        elevation: _isProcessing ? 0 : 6,
+                                        shadowColor: AppColors.buttonBrown3.withOpacity(0.4),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        minimumSize: const Size(0, 52),
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                      ),
+                                      onPressed: _isProcessing ? null : _seleccionarGaleria,
+                                    ),
                                   ),
-                                  minimumSize: const Size(0, 48),
-                                ),
-                                onPressed: _seleccionarGaleria,
-                                child: const Text(
-                                  'Galería',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
+                                ],
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  // Botón compacto para cambiar imagen
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: _isProcessing 
+                                          ? AppColors.backgroundCard.withOpacity(0.5)
+                                          : AppColors.backgroundCard.withOpacity(0.9),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: _isProcessing 
+                                            ? AppColors.buttonGreen2.withOpacity(0.2)
+                                            : AppColors.buttonGreen2.withOpacity(0.3), 
+                                        width: 1
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            borderRadius: const BorderRadius.only(
+                                              topLeft: Radius.circular(8),
+                                              bottomLeft: Radius.circular(8),
+                                            ),
+                                            onTap: _isProcessing ? null : _tomarFoto,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.camera_alt,
+                                                    color: _isProcessing 
+                                                        ? AppColors.textPaleGreen.withOpacity(0.5)
+                                                        : AppColors.textPaleGreen,
+                                                    size: 18,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    'Capturar',
+                                                    style: TextStyle(
+                                                      color: _isProcessing 
+                                                          ? AppColors.textPaleGreen.withOpacity(0.5)
+                                                          : AppColors.textPaleGreen,
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        Container(
+                                          width: 1,
+                                          height: 32,
+                                          color: AppColors.buttonGreen2.withOpacity(0.3),
+                                        ),
+                                        Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            borderRadius: const BorderRadius.only(
+                                              topRight: Radius.circular(8),
+                                              bottomRight: Radius.circular(8),
+                                            ),
+                                            onTap: _isProcessing ? null : _seleccionarGaleria,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.photo_library,
+                                                    color: _isProcessing 
+                                                        ? AppColors.textPaleGreen.withOpacity(0.5)
+                                                        : AppColors.textPaleGreen,
+                                                    size: 18,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    'Galería',
+                                                    style: TextStyle(
+                                                      color: _isProcessing 
+                                                          ? AppColors.textPaleGreen.withOpacity(0.5)
+                                                          : AppColors.textPaleGreen,
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
                         if (_image != null) ...[
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 35),
+                          // Botón de registro manual (arriba)
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              icon: const Icon(Icons.edit, color: AppColors.textWhite),
+                              label: const Text(
+                                'Registrar',
+                                style: TextStyle(
+                                  color: AppColors.textWhite,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              style: ButtonStyle(
+                                backgroundColor: WidgetStateProperty.all(AppColors.buttonGreen2.withValues(alpha: 0.8)),
+                                shape: WidgetStateProperty.all<RoundedRectangleBorder>(
+                                  RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                minimumSize: WidgetStateProperty.all(const Size(0, 48)),
+                                elevation: WidgetStateProperty.all(4),
+                              ),
+                              onPressed: _isProcessing ? null : _registrarManualmente,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          // Fila de botones: Pendiente y Analizar
                           Row(
                             children: [
-                              if (_hasInternet)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 8.0),
-                                  child: IconButton(
-                                    icon: const Icon(Icons.save_as_outlined),
-                                    color: AppColors.textWhite,
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: AppColors.buttonBrown3,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
+                              if (_hasInternet) ...[
+                                // Botón Pendiente
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(Icons.save_as_outlined, color: AppColors.textWhite),
+                                    label: const Text(
+                                      'Pendiente',
+                                      style: TextStyle(
+                                        color: AppColors.textWhite,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
                                       ),
-                                      padding: const EdgeInsets.all(12),
                                     ),
-                                    tooltip: 'Guardar como pendiente',
+                                    style: ButtonStyle(
+                                      backgroundColor: WidgetStateProperty.all(AppColors.buttonBrown3),
+                                      shape: WidgetStateProperty.all<RoundedRectangleBorder>(
+                                        RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      minimumSize: WidgetStateProperty.all(const Size(0, 48)),
+                                      elevation: WidgetStateProperty.all(_isProcessing ? 0 : 4),
+                                    ),
                                     onPressed: _isProcessing ? null : _guardarPendiente,
                                   ),
                                 ),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  icon: _isProcessing
-                                      ? const SizedBox(
-                                          width: 22,
-                                          height: 22,
-                                          child: CircularProgressIndicator(
-                                            color: AppColors.textWhite,
-                                            strokeWidth: 2.5,
-                                          ),
-                                        )
-                                      : Icon(
-                                          _hasInternet ? Icons.psychology : Icons.save,
-                                          color: AppColors.textWhite,
-                                        ),
-                                  label: Text(
-                                    _isProcessing
-                                        ? (_hasInternet ? 'Analizando...' : 'Guardando...')
-                                        : (_hasInternet ? 'Analizar' : 'Guardar como pendiente'),
-                                    style: const TextStyle(
-                                      color: AppColors.textWhite,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  style: ButtonStyle(
-                                    backgroundColor: WidgetStateProperty.all(
-                                        _hasInternet ? AppColors.buttonBlue2 : AppColors.buttonBrown3),
-                                    shape: WidgetStateProperty.all<RoundedRectangleBorder>(
-                                      RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
+                                const SizedBox(width: 16),
+                                // Botón Analizar
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    icon: _isProcessing
+                                        ? const SizedBox(
+                                            width: 22,
+                                            height: 22,
+                                            child: CircularProgressIndicator(
+                                              color: AppColors.textWhite,
+                                              strokeWidth: 2.5,
+                                            ),
+                                          )
+                                        : const Icon(Icons.psychology, color: AppColors.textWhite),
+                                    label: Text(
+                                      _isProcessing ? 'Analizando...' : 'Analizar',
+                                      style: const TextStyle(
+                                        color: AppColors.textWhite,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
                                       ),
                                     ),
-                                    minimumSize: WidgetStateProperty.all(const Size(0, 48)),
-                                    elevation: WidgetStateProperty.all(_isProcessing ? 0 : 4),
+                                    style: ButtonStyle(
+                                      backgroundColor: WidgetStateProperty.all(AppColors.buttonBlue2),
+                                      shape: WidgetStateProperty.all<RoundedRectangleBorder>(
+                                        RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      minimumSize: WidgetStateProperty.all(const Size(0, 48)),
+                                      elevation: WidgetStateProperty.all(_isProcessing ? 0 : 4),
+                                    ),
+                                    onPressed: _isProcessing ? null : _analizarFoto,
                                   ),
-                                  onPressed: _isProcessing ? null : _analizarFoto,
                                 ),
-                              ),
+                              ] else ...[
+                                // Solo botón para guardar como pendiente cuando no hay internet
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    icon: _isProcessing
+                                        ? const SizedBox(
+                                            width: 22,
+                                            height: 22,
+                                            child: CircularProgressIndicator(
+                                              color: AppColors.textWhite,
+                                              strokeWidth: 2.5,
+                                            ),
+                                          )
+                                        : const Icon(Icons.save, color: AppColors.textWhite),
+                                    label: Text(
+                                      _isProcessing ? 'Guardando...' : 'Guardar como pendiente',
+                                      style: const TextStyle(
+                                        color: AppColors.textWhite,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    style: ButtonStyle(
+                                      backgroundColor: WidgetStateProperty.all(AppColors.buttonBrown3),
+                                      shape: WidgetStateProperty.all<RoundedRectangleBorder>(
+                                        RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      minimumSize: WidgetStateProperty.all(const Size(0, 48)),
+                                      elevation: WidgetStateProperty.all(_isProcessing ? 0 : 4),
+                                    ),
+                                    onPressed: _isProcessing ? null : _analizarFoto,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ],

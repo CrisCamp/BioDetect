@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:async';
+import 'dart:typed_data';
 import 'package:biodetect/themes.dart';
 import 'package:biodetect/services/bitacora_service.dart';
 import 'package:biodetect/services/pdf_service.dart';
@@ -1031,21 +1034,124 @@ class FullScreenImageViewer extends StatelessWidget {
     this.registroData,
   });
 
+  // Verificar conexión a internet
+  Future<bool> _checkInternetConnection() async {
+    try {
+      final result = await InternetAddress.lookup('dns.google');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // Método para descargar la imagen con metadatos usando MediaStore (Android)
   Future<void> _downloadImageWithMetadata(BuildContext context) async {
     try {
-      // Mostrar indicador de descarga
+      // VALIDACIÓN 1: Verificar conexión a internet antes de iniciar la descarga
+      print('🔍 Verificando conexión a internet...');
+      final hasInternet = await _checkInternetConnection();
+      
+      if (!hasInternet) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.wifi_off, color: Colors.white),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Sin conexión a internet. Verifica tu conexión e inténtalo de nuevo.',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.warning,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Mostrar indicador de descarga con información detallada
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(color: Colors.white),
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.deepGreen),
+                strokeWidth: 3.0,
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Descargando imagen de bitácora...',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Verificando conexión y descargando archivo\nEsto puede tomar unos momentos',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                  height: 1.4,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.wifi,
+                    size: 16,
+                    color: Colors.green[600],
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Conexión verificada',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.green[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       );
 
-      // Descargar la imagen
-      final response = await http.get(Uri.parse(imageUrl));
+      print('🌐 Iniciando descarga de imagen de bitácora desde: $imageUrl');
+      
+      // DESCARGA CON TIMEOUT Y VALIDACIÓN DE CONEXIÓN
+      final response = await http.get(
+        Uri.parse(imageUrl),
+      ).timeout(
+        const Duration(seconds: 30), // Timeout de 30 segundos
+        onTimeout: () {
+          throw TimeoutException('La descarga tardó demasiado tiempo. Verifica tu conexión a internet.', const Duration(seconds: 30));
+        },
+      );
+
       if (response.statusCode == 200) {
+        print('✅ Descarga exitosa. Tamaño: ${response.bodyBytes.length} bytes');
+        
+        // VALIDACIÓN 2: Verificar que los datos descargados no estén vacíos
+        if (response.bodyBytes.isEmpty) {
+          throw Exception('La imagen descargada está vacía. Verifica tu conexión e inténtalo de nuevo.');
+        }
         
         // Generar nombre y estructura de carpetas
         final photoId = registroData?['photoId'] ?? DateTime.now().millisecondsSinceEpoch.toString();
@@ -1060,6 +1166,8 @@ class FullScreenImageViewer extends StatelessWidget {
         
         // Nuevo formato para bitácoras: BioDetect_Bitacora_Orden_photoId
         final fileName = 'BioDetect_Bitacora_${ordenClean}_$photoId';
+        
+        print('💾 Guardando imagen de bitácora como: $fileName en carpeta: $claseClean');
         
         // Usar MediaStore para guardar imagen y metadatos
         await _saveImageToMediaStore(response.bodyBytes, fileName, claseClean);
@@ -1083,20 +1191,147 @@ class FullScreenImageViewer extends StatelessWidget {
             ),
           );
         }
+      } else if (response.statusCode == 404) {
+        throw Exception('La imagen no se encontró en el servidor (Error 404).');
+      } else if (response.statusCode >= 500) {
+        throw Exception('Error del servidor (${response.statusCode}). Inténtalo más tarde.');
       } else {
-        throw Exception('Error al descargar la imagen (${response.statusCode})');
+        throw Exception('Error al descargar la imagen (Código ${response.statusCode}). Verifica tu conexión.');
       }
-    } catch (e) {
-      // Cerrar indicador de descarga
+    } on TimeoutException catch (_) {
+      // Error específico de timeout
+      print('⏰ Timeout en descarga de imagen de bitácora');
       if (context.mounted) Navigator.of(context).pop();
       
-      // Mostrar mensaje de error
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.access_time, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'La descarga tardó demasiado tiempo. Verifica tu conexión a internet e inténtalo de nuevo.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.warning,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    } on SocketException catch (_) {
+      // Error específico de conexión de red
+      print('🌐 Error de conexión de red en bitácora');
+      if (context.mounted) Navigator.of(context).pop();
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.wifi_off, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Sin conexión a internet. Verifica tu conexión e inténtalo de nuevo.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.warning,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } on FormatException catch (_) {
+      // Error de formato de datos
+      print('📄 Error de formato en la respuesta');
+      if (context.mounted) Navigator.of(context).pop();
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'La imagen tiene un formato inválido. Por favor reporta este problema.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      // Manejo de otros errores con mensajes específicos
+      print('❌ Error en descarga de bitácora: $e');
+      if (context.mounted) Navigator.of(context).pop();
+      
+      String errorMessage = 'Error inesperado al descargar la imagen.';
+      Color backgroundColor = Colors.red;
+      IconData errorIcon = Icons.error_outline;
+      
+      // Analizar el tipo de error para proporcionar mensajes específicos
+      final errorString = e.toString().toLowerCase();
+      
+      if (errorString.contains('connection') || errorString.contains('network') || errorString.contains('internet')) {
+        errorMessage = 'Problema de conexión a internet. Verifica tu conexión e inténtalo de nuevo.';
+        backgroundColor = AppColors.warning;
+        errorIcon = Icons.wifi_off;
+      } else if (errorString.contains('404')) {
+        errorMessage = 'La imagen no se encontró en el servidor.';
+        backgroundColor = AppColors.warning;
+        errorIcon = Icons.image_not_supported;
+      } else if (errorString.contains('500') || errorString.contains('server')) {
+        errorMessage = 'Error del servidor. Inténtalo más tarde.';
+        backgroundColor = AppColors.warning;
+        errorIcon = Icons.cloud_off;
+      } else if (errorString.contains('permission') || errorString.contains('storage')) {
+        errorMessage = 'Error al guardar la imagen. Verifica los permisos de almacenamiento.';
+        backgroundColor = Colors.orange;
+        errorIcon = Icons.folder_off;
+      } else if (errorString.contains('space') || errorString.contains('full')) {
+        errorMessage = 'No hay suficiente espacio de almacenamiento.';
+        backgroundColor = Colors.orange;
+        errorIcon = Icons.storage;
+      } else {
+        // Error genérico con información útil
+        errorMessage = 'Error al descargar: ${e.toString().length > 100 ? e.toString().substring(0, 100) + "..." : e.toString()}';
+      }
+      
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al descargar la imagen: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
+            content: Row(
+              children: [
+                Icon(errorIcon, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    errorMessage,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: backgroundColor,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Reintentar',
+              textColor: Colors.white,
+              onPressed: () => _downloadImageWithMetadata(context),
+            ),
           ),
         );
       }
@@ -1131,7 +1366,7 @@ class FullScreenImageViewer extends StatelessWidget {
         'content': metadata,
         'fileName': '${fileName}_metadata.txt',
         'mimeType': 'text/plain',
-        'collection': 'Documents/BioDetect/$clase', // Organizado por clase taxonómica
+        'collection': 'Download/BioDetect/Metadatos/$clase', // Organizado por clase taxonómica
       });
     } catch (e) {
       print('Error guardando metadatos en MediaStore: $e');
@@ -1175,20 +1410,10 @@ class FullScreenImageViewer extends StatelessWidget {
       }
     } catch (_) {}
     
-    // Formatear fecha de sincronización
-    String fechaSincronizacion = 'No sincronizado';
-    try {
-      if (registro['syncedAt'] != null) {
-        final date = registro['syncedAt'];
-        final dt = date is DateTime ? date : date.toDate();
-        fechaSincronizacion = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-      }
-    } catch (_) {}
-    
     return '''
 === METADATOS DE BITÁCORA BIODETECT ===
 Archivo de imagen: $fileName.jpg
-Fecha de descarga: ${DateTime.now().toString()}
+Fecha de descarga: ${DateTime.now().toString().substring(0, 16)}
 Tipo de documento: Registro de Bitácora
 
 === INFORMACIÓN TAXONÓMICA ===
@@ -1196,9 +1421,9 @@ Clase: ${registro['class'] ?? 'No especificada'}
 Orden: ${registro['taxonOrder'] ?? 'No especificado'}
 
 === INFORMACIÓN DEL HALLAZGO ===
-Hábitat: ${registro['habitat'] ?? 'No especificado'}
-Detalles: ${registro['details'] ?? 'Sin detalles'}
-Notas: ${registro['notes'] ?? 'Sin notas'}
+Hábitat: ${(registro['habitat']?.toString().trim().isEmpty ?? true) ? 'No especificado' : registro['habitat']}
+Detalles: ${(registro['details']?.toString().trim().isEmpty ?? true) ? 'Sin detalles' : registro['details']}
+Notas: ${(registro['notes']?.toString().trim().isEmpty ?? true) ? 'Sin notas' : registro['notes']}
 
 === INFORMACIÓN GEOGRÁFICA ===
 Visibilidad de ubicación: $locationVisibility
@@ -1206,10 +1431,6 @@ Coordenadas: $coordenadas
 
 === FECHAS ===
 Fecha de creación: $fechaCreacion${fechaModificacion.isNotEmpty ? '\nÚltima modificación: $fechaModificacion' : ''}
-
-=== SINCRONIZACIÓN ===
-Estado: ${registro['syncedAt'] != null ? 'Sincronizado con Google Drive' : 'Sin sincronizar'}
-Fecha de sincronización: $fechaSincronizacion
 
 === INFORMACIÓN DE BITÁCORA ===
 Parte de una bitácora de investigación de biodiversidad

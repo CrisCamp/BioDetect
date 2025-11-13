@@ -3,13 +3,14 @@ import 'dart:async';
 import 'package:biodetect/views/notes/mis_bitacoras.dart';
 import 'package:biodetect/views/user/editar_perfil.dart';
 import 'package:biodetect/views/badges/galeria_insignias.dart';
+import 'package:biodetect/services/profile_notifier.dart';
+import 'package:biodetect/services/banner_ad_service.dart';
 import 'package:flutter/material.dart';
 import 'package:biodetect/themes.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -18,60 +19,49 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen> with BannerAdMixin {
   late Future<Map<String, dynamic>> _userDataFuture;
   bool _hasInternet = true;
   Timer? _internetTimer;
 
-  // Variables para AdMob
-  BannerAd? _bannerAd;
-  bool _isBannerAdReady = false;
+  // Notificador para recargar perfil cuando se eliminen registros
+  final ProfileNotifier _profileNotifier = ProfileNotifier();
 
   @override
   void initState() {
     super.initState();
-    _initializeBannerAd();
+    initializeBanner();
     _checkInternet();
     _userDataFuture = _loadUserData();
     _internetTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       _checkInternet();
     });
+    
+    // Escuchar cambios en el ProfileNotifier para recargar datos
+    _profileNotifier.shouldRefreshProfile.addListener(_onProfileChangeRequested);
   }
 
   @override
   void dispose() {
     _internetTimer?.cancel();
-    _bannerAd?.dispose(); // Limpiar el banner ad
+    disposeBanner(); // Limpiar el banner ad
+    _profileNotifier.shouldRefreshProfile.removeListener(_onProfileChangeRequested);
     super.dispose();
   }
 
-  // Método para inicializar el banner de AdMob
-  void _initializeBannerAd() {
-    _bannerAd = BannerAd(
-      adUnitId: Platform.isAndroid
-          ? 'ca-app-pub-2455614119782029/5903033792' // ID para Android
-          : 'ca-app-pub-3940256099942544/2934735716', // ID para iOS
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (ad) {
-          setState(() {
-            _isBannerAdReady = true;
-          });
-        },
-        onAdFailedToLoad: (ad, error) {
-          print('AdMob Error: ${error.message}');
-          ad.dispose();
-        },
-      ),
-    );
-
-    _bannerAd?.load();
+  /// Callback que se ejecuta cuando se requiere recargar el perfil
+  void _onProfileChangeRequested() {
+    if (mounted) {
+      print('🔄 ProfileScreen: Recargando datos del perfil por notificación externa');
+      setState(() {
+        _userDataFuture = _loadUserData();
+      });
+    }
   }
 
   Future<void> _checkInternet() async {
     try {
-      final result = await InternetAddress.lookup('example.com');
+      final result = await InternetAddress.lookup('dns.google');
       if (mounted) {
         setState(() {
           _hasInternet = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
@@ -165,6 +155,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     };
   }
 
+  /// Método público para forzar la recarga de datos del perfil
+  /// Útil cuando se eliminan registros o bitácoras desde otras pantallas
+  void reloadProfileData() {
+    if (mounted) {
+      print('🔄 ProfileScreen: Recarga manual solicitada');
+      setState(() {
+        _userDataFuture = _loadUserData();
+      });
+    }
+  }
+
   Future<void> _cerrarSesion(BuildContext context) async {
     final bool? confirmar = await showDialog<bool>(
       context: context,
@@ -232,13 +233,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             children: [
               // Banner de AdMob
-              if (_isBannerAdReady && _bannerAd != null)
-                Container(
-                  alignment: Alignment.center,
-                  width: _bannerAd!.size.width.toDouble(),
-                  height: _bannerAd!.size.height.toDouble(),
-                  child: AdWidget(ad: _bannerAd!),
-                ),
+              buildBanner(margin: const EdgeInsets.symmetric(vertical: 8)),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(

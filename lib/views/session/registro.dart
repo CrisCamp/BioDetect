@@ -123,6 +123,7 @@ class _RegistroState extends State<Registro> {
           'createdAt': FieldValue.serverTimestamp(),
           'loginAt': FieldValue.serverTimestamp(),
           'badges': [],
+          'removeAds': false,
         });
 
         await _createUserActivityDocument(user.uid);

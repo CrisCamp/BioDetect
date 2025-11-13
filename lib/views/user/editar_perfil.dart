@@ -46,7 +46,7 @@ class _EditarPerfilState extends State<EditarPerfil> {
 
   Future<void> _checkInternet() async {
     try {
-      final result = await InternetAddress.lookup('biodetect.com');
+      final result = await InternetAddress.lookup('dns.google');
       final hasInternet = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
       if (mounted) {
         setState(() {
@@ -99,6 +99,28 @@ class _EditarPerfilState extends State<EditarPerfil> {
   }
 
   Future<void> _pickImage() async {
+    // 1. Verificación inicial de conectividad antes de abrir el seleccionador
+    print('🔍 EditarPerfil: Verificando conexión para seleccionar imagen...');
+    try {
+      // Usar lookup DNS para verificación más robusta de conectividad
+      final result = await InternetAddress.lookup('dns.google').timeout(const Duration(seconds: 10));
+      if (result.isEmpty || result[0].rawAddress.isEmpty) {
+        throw Exception('No internet connection');
+      }
+      print('✅ EditarPerfil: Conectividad confirmada para selección de imagen');
+    } catch (e) {
+      print('❌ EditarPerfil: No hay conexión a internet');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No hay conexión a internet. Por favor, verifica tu conectividad e intenta nuevamente.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
     
@@ -177,29 +199,115 @@ class _EditarPerfilState extends State<EditarPerfil> {
   Future<void> _uploadProfileImage(XFile image) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    
     setState(() => _loading = true);
+    
     try {
+      print('🔍 EditarPerfil: Iniciando proceso de actualización de foto de perfil...');
+      
+      // 1. Verificación inicial de conectividad
+      print('🌐 EditarPerfil: Verificando conexión a internet...');
+      try {
+        // Usar lookup DNS para verificación más robusta de conectividad
+        final result = await InternetAddress.lookup('dns.google').timeout(const Duration(seconds: 10));
+        if (result.isEmpty || result[0].rawAddress.isEmpty) {
+          throw Exception('No internet connection');
+        }
+        print('✅ EditarPerfil: Conexión inicial confirmada con DNS lookup');
+      } catch (e) {
+        print('❌ EditarPerfil: No hay conexión a internet');
+        throw Exception('No hay conexión a internet. Por favor, verifica tu conectividad e intenta nuevamente.');
+      }
+
+      // 2. Subir imagen a Storage
+      print('📁 EditarPerfil: Subiendo imagen a Firebase Storage...');
       final ref = FirebaseStorage.instance
           .ref()
           .child('profile_pictures/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg');
       await ref.putData(await image.readAsBytes());
       final url = await ref.getDownloadURL();
-      
+      print('✅ EditarPerfil: Imagen subida exitosamente');
+
+      // 3. Verificación adicional de conexión antes de actualizar Firestore
+      print('🔍 EditarPerfil: Verificación final de conectividad antes de actualizar perfil...');
+      try {
+        // Usar lookup DNS para verificación más robusta de conectividad
+        final result = await InternetAddress.lookup('dns.google').timeout(const Duration(seconds: 10));
+        if (result.isEmpty || result[0].rawAddress.isEmpty) {
+          throw Exception('No internet connection');
+        }
+        print('✅ EditarPerfil: Conectividad final confirmada con DNS lookup');
+      } catch (e) {
+        print('❌ EditarPerfil: Fallo en verificación final - cancelando actualización');
+        // Si falló la verificación, eliminar la imagen subida para evitar archivos huérfanos
+        try {
+          await ref.delete();
+          print('🗑️ EditarPerfil: Imagen eliminada por falta de conectividad');
+        } catch (deleteError) {
+          print('⚠️ EditarPerfil: Error al eliminar imagen: $deleteError');
+        }
+        throw Exception('Se perdió la conexión a internet durante el proceso. La actualización ha sido cancelada por seguridad.');
+      }
+
+      // 4. Actualizar documento en Firestore
+      print('💾 EditarPerfil: Actualizando documento de usuario...');
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'profilePicture': url,
       });
+      print('✅ EditarPerfil: Perfil actualizado exitosamente');
       
       setState(() {
         _profileUrl = url;
       });
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Foto de perfil actualizada')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Foto de perfil actualizada'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al subir imagen: $e')),
-      );
+      final errorString = e.toString().toLowerCase();
+      print('❌ EditarPerfil: Error en actualización de foto - $e');
+      
+      if (mounted) {
+        String errorMessage;
+        
+        // Detectar errores específicos de Firebase y proporcionar mensajes amigables
+        if (errorString.contains('unavailable') || 
+            errorString.contains('timeout') || 
+            errorString.contains('network') || 
+            errorString.contains('connection')) {
+          errorMessage = 'El servidor no está disponible temporalmente. Verifica tu conexión a internet e inténtalo de nuevo en unos momentos.';
+        } else if (errorString.contains('permission-denied') || 
+                   errorString.contains('unauthorized')) {
+          errorMessage = 'No tienes permisos para actualizar tu foto de perfil. Verifica tu cuenta.';
+        } else if (errorString.contains('unauthenticated') ||
+                   (errorString.contains('user') && errorString.contains('auth'))) {
+          errorMessage = 'Tu sesión ha expirado. Inicia sesión nuevamente e inténtalo de nuevo.';
+        } else if (errorString.contains('quota-exceeded') ||
+                   errorString.contains('resource-exhausted')) {
+          errorMessage = 'Se ha superado la cuota de uso. Inténtalo más tarde.';
+        } else if (errorString.contains('deadline-exceeded') ||
+                   errorString.contains('cancelled')) {
+          errorMessage = 'La operación tardó demasiado tiempo. Verifica tu conexión e inténtalo de nuevo.';
+        } else if (errorString.contains('perdió') && errorString.contains('conexión')) {
+          errorMessage = e.toString(); // Usar mensaje específico de pérdida de conexión
+        } else {
+          // Para cualquier otro error, usar un mensaje genérico y amigable
+          errorMessage = 'No se pudo actualizar la foto de perfil. Verifica tu conexión a internet e inténtalo de nuevo.';
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       setState(() => _loading = false);
     }
@@ -207,42 +315,149 @@ class _EditarPerfilState extends State<EditarPerfil> {
 
   Future<void> _guardarCambios() async {
     if (!_formKey.currentState!.validate()) return;
+    
     setState(() => _loading = true);
 
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final nuevoNombre = _nombreController.text.trim();
-
     try {
+      print('🔍 EditarPerfil: Iniciando proceso de actualización de nombre...');
+      
+      // 1. Verificación inicial de conectividad
+      print('🌐 EditarPerfil: Verificando conexión a internet...');
+      try {
+        // Usar lookup DNS para verificación más robusta de conectividad
+        final result = await InternetAddress.lookup('dns.google').timeout(const Duration(seconds: 10));
+        if (result.isEmpty || result[0].rawAddress.isEmpty) {
+          throw Exception('No internet connection');
+        }
+        print('✅ EditarPerfil: Conexión inicial confirmada con DNS lookup');
+      } catch (e) {
+        print('❌ EditarPerfil: No hay conexión a internet');
+        throw Exception('No hay conexión a internet. Por favor, verifica tu conectividad e intenta nuevamente.');
+      }
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('Usuario no autenticado. Inicia sesión e inténtalo de nuevo.');
+      }
+
+      final nuevoNombre = _nombreController.text.trim();
+      
+      // Validar que el nombre no esté vacío
+      if (nuevoNombre.isEmpty) {
+        throw Exception('El nombre no puede estar vacío.');
+      }
+
+      print('📝 EditarPerfil: Procesando actualización de nombre: "$nuevoNombre"');
+
+      // 2. Verificación adicional de conexión antes de las operaciones críticas
+      print('🔍 EditarPerfil: Verificación final de conectividad antes de actualizar...');
+      try {
+        // Usar lookup DNS para verificación más robusta de conectividad
+        final result = await InternetAddress.lookup('dns.google').timeout(const Duration(seconds: 10));
+        if (result.isEmpty || result[0].rawAddress.isEmpty) {
+          throw Exception('No internet connection');
+        }
+        print('✅ EditarPerfil: Conectividad final confirmada con DNS lookup');
+      } catch (e) {
+        print('❌ EditarPerfil: Fallo en verificación final - cancelando actualización');
+        throw Exception('Se perdió la conexión a internet durante el proceso. La actualización ha sido cancelada por seguridad.');
+      }
+
+      // 3. Actualizar documento en Firestore
+      print('💾 EditarPerfil: Actualizando documento de usuario en Firestore...');
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'fullname': nuevoNombre,
       });
+      print('✅ EditarPerfil: Documento en Firestore actualizado');
       
+      // 4. Actualizar display name en Firebase Auth
+      print('🔐 EditarPerfil: Actualizando display name en Firebase Auth...');
       await user.updateDisplayName(nuevoNombre);
       await user.reload();
+      print('✅ EditarPerfil: Display name actualizado');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Perfil actualizado correctamente')),
+          const SnackBar(
+            content: Text('Perfil actualizado correctamente'),
+            backgroundColor: Colors.green,
+          ),
         );
         Navigator.pop(context, true);
       }
-    } on FirebaseAuthException catch (e) {
-      String msg = 'Error al actualizar: ${e.message}';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg)),
-      );
+      
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error inesperado: $e')),
-      );
+      final errorString = e.toString().toLowerCase();
+      print('❌ EditarPerfil: Error en actualización de nombre - $e');
+      
+      if (mounted) {
+        String errorMessage;
+        
+        // Detectar errores específicos de Firebase y proporcionar mensajes amigables
+        if (errorString.contains('unavailable') || 
+            errorString.contains('timeout') || 
+            errorString.contains('network') || 
+            errorString.contains('connection')) {
+          errorMessage = 'El servidor no está disponible temporalmente. Verifica tu conexión a internet e inténtalo de nuevo en unos momentos.';
+        } else if (errorString.contains('permission-denied') || 
+                   errorString.contains('unauthorized')) {
+          errorMessage = 'No tienes permisos para actualizar tu perfil. Verifica tu cuenta.';
+        } else if (errorString.contains('unauthenticated') ||
+                   (errorString.contains('user') && errorString.contains('auth'))) {
+          errorMessage = 'Tu sesión ha expirado. Inicia sesión nuevamente e inténtalo de nuevo.';
+        } else if (errorString.contains('quota-exceeded') ||
+                   errorString.contains('resource-exhausted')) {
+          errorMessage = 'Se ha superado la cuota de uso. Inténtalo más tarde.';
+        } else if (errorString.contains('deadline-exceeded') ||
+                   errorString.contains('cancelled')) {
+          errorMessage = 'La operación tardó demasiado tiempo. Verifica tu conexión e inténtalo de nuevo.';
+        } else if (errorString.contains('perdió') && errorString.contains('conexión')) {
+          errorMessage = e.toString(); // Usar mensaje específico de pérdida de conexión
+        } else if (errorString.contains('vacío')) {
+          errorMessage = 'El nombre no puede estar vacío.';
+        } else if (errorString.contains('usuario') && errorString.contains('autenticado')) {
+          errorMessage = e.toString(); // Usar mensaje específico de autenticación
+        } else {
+          // Para cualquier otro error, usar un mensaje genérico y amigable
+          errorMessage = 'No se pudo actualizar el perfil. Verifica tu conexión a internet e inténtalo de nuevo.';
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       setState(() => _loading = false);
     }
   }
 
   Future<void> _mostrarDialogoEliminarCuenta() async {
+    // 1. Verificación inicial de conectividad antes de mostrar diálogo
+    print('🔍 EditarPerfil: Verificando conexión para eliminar cuenta...');
+    try {
+      // Usar lookup DNS para verificación más robusta de conectividad
+      final result = await InternetAddress.lookup('dns.google').timeout(const Duration(seconds: 10));
+      if (result.isEmpty || result[0].rawAddress.isEmpty) {
+        throw Exception('No internet connection');
+      }
+      print('✅ EditarPerfil: Conectividad confirmada para eliminación de cuenta');
+    } catch (e) {
+      print('❌ EditarPerfil: No hay conexión a internet para eliminar cuenta');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No hay conexión a internet. Se requiere conectividad estable para eliminar tu cuenta de forma segura.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+      return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -497,10 +712,24 @@ class _EditarPerfilState extends State<EditarPerfil> {
     if (user == null) throw Exception('No hay usuario autenticado');
 
     try {
-      print('Iniciando eliminación completa de cuenta...');
+      print('🔍 EditarPerfil: Iniciando eliminación completa de cuenta...');
 
-      // 1. PRIMERO: Eliminar archivos de Storage (antes de Firestore)
-      print('Paso 1: Eliminando archivos de Storage...');
+      // 1. Verificación inicial de conectividad para eliminación
+      print('🌐 EditarPerfil: Verificando conexión a internet para eliminación...');
+      try {
+        // Usar lookup DNS para verificación más robusta de conectividad
+        final result = await InternetAddress.lookup('dns.google').timeout(const Duration(seconds: 10));
+        if (result.isEmpty || result[0].rawAddress.isEmpty) {
+          throw Exception('No internet connection');
+        }
+        print('✅ EditarPerfil: Conexión inicial confirmada para eliminación con DNS lookup');
+      } catch (e) {
+        print('❌ EditarPerfil: No hay conexión a internet para eliminar cuenta');
+        throw Exception('No hay conexión a internet. Se requiere conectividad estable para eliminar tu cuenta de forma segura.');
+      }
+
+      // 2. PRIMERO: Eliminar archivos de Storage (antes de Firestore)
+      print('📁 EditarPerfil: Paso 1 - Eliminando archivos de Storage...');
       
       // Eliminar fotos de perfil
       try {
@@ -569,10 +798,24 @@ class _EditarPerfilState extends State<EditarPerfil> {
         print('Error al eliminar archivos de chat: $e');
       }
 
-      print('Paso 1 completado: Archivos de Storage eliminados');
+      print('✅ EditarPerfil: Paso 1 completado - Archivos de Storage eliminados');
 
-      // 2. SEGUNDO: Eliminar documentos de Firestore usando batch
-      print('Paso 2: Eliminando documentos de Firestore...');
+      // 3. Verificación intermedia de conexión antes de Firestore
+      print('🔍 EditarPerfil: Verificación intermedia de conectividad antes de Firestore...');
+      try {
+        // Usar lookup DNS para verificación más robusta de conectividad
+        final result = await InternetAddress.lookup('dns.google').timeout(const Duration(seconds: 10));
+        if (result.isEmpty || result[0].rawAddress.isEmpty) {
+          throw Exception('No internet connection');
+        }
+        print('✅ EditarPerfil: Conectividad intermedia confirmada con DNS lookup');
+      } catch (e) {
+        print('❌ EditarPerfil: Fallo en verificación intermedia - cancelando eliminación');
+        throw Exception('Se perdió la conexión a internet durante el proceso. La eliminación de cuenta ha sido cancelada por seguridad.');
+      }
+
+      // 4. SEGUNDO: Eliminar documentos de Firestore usando batch atómico
+      print('💾 EditarPerfil: Paso 2 - Eliminando documentos de Firestore con batch atómico...');
       final batch = FirebaseFirestore.instance.batch();
       
       // Eliminar fotos de artrópodos identificados
@@ -625,39 +868,95 @@ class _EditarPerfilState extends State<EditarPerfil> {
       // Eliminar perfil del usuario
       batch.delete(FirebaseFirestore.instance.collection('users').doc(user.uid));
 
-      // Ejecutar batch
-      await batch.commit();
-      print('Paso 2 completado: Documentos de Firestore eliminados');
+      // 5. Verificación final de conexión antes del commit del batch
+      print('🔍 EditarPerfil: Verificación final de conectividad antes del batch commit...');
+      try {
+        // Usar lookup DNS para verificación más robusta de conectividad
+        final result = await InternetAddress.lookup('dns.google').timeout(const Duration(seconds: 10));
+        if (result.isEmpty || result[0].rawAddress.isEmpty) {
+          throw Exception('No internet connection');
+        }
+        print('✅ EditarPerfil: Conectividad final confirmada con DNS lookup');
+      } catch (e) {
+        print('❌ EditarPerfil: Fallo en verificación final - cancelando batch commit');
+        throw Exception('Se perdió la conexión a internet durante el proceso. La eliminación de cuenta ha sido cancelada por seguridad.');
+      }
 
-      // 3. TERCERO: Limpiar datos locales
-      print('Paso 3: Limpiando datos locales...');
+      // 6. Ejecutar batch atómico
+      print('💾 EditarPerfil: Ejecutando batch atómico de eliminación...');
+      await batch.commit();
+      print('✅ EditarPerfil: Paso 2 completado - Documentos de Firestore eliminados con batch atómico');
+
+      // 7. TERCERO: Limpiar datos locales
+      print('🧹 EditarPerfil: Paso 3 - Limpiando datos locales...');
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.clear();
-        print('Preferencias locales limpiadas');
+        print('✅ EditarPerfil: Preferencias locales limpiadas');
       } catch (e) {
-        print('Error al limpiar preferencias: $e');
+        print('⚠️ EditarPerfil: Error al limpiar preferencias: $e');
       }
 
-      // 4. CUARTO: Cerrar sesión de Google si aplica
-      print('Paso 4: Cerrando sesión de Google...');
+      // 8. CUARTO: Cerrar sesión de Google si aplica
+      print('🔓 EditarPerfil: Paso 4 - Cerrando sesión de Google...');
       try {
         await GoogleSignIn().signOut();
-        print('Sesión de Google cerrada');
+        print('✅ EditarPerfil: Sesión de Google cerrada');
       } catch (e) {
-        print('Error al cerrar sesión de Google (puede ser normal si no usó Google): $e');
+        print('⚠️ EditarPerfil: Error al cerrar sesión de Google (puede ser normal si no usó Google): $e');
       }
 
-      // 5. QUINTO: Eliminar cuenta de Firebase Auth (SIEMPRE AL FINAL)
-      print('Paso 5: Eliminando cuenta de Firebase Auth...');
-      await user.delete();
-      print('Cuenta de Firebase Auth eliminada');
+      // 9. Verificación final antes de eliminar cuenta de Auth
+      print('🔍 EditarPerfil: Verificación final antes de eliminar cuenta de Firebase Auth...');
+      try {
+        // Usar lookup DNS para verificación más robusta de conectividad
+        final result = await InternetAddress.lookup('dns.google').timeout(const Duration(seconds: 10));
+        if (result.isEmpty || result[0].rawAddress.isEmpty) {
+          throw Exception('No internet connection');
+        }
+        print('✅ EditarPerfil: Conectividad final confirmada para eliminación de Auth');
+      } catch (e) {
+        print('❌ EditarPerfil: Fallo en verificación final para Auth - cancelando eliminación');
+        throw Exception('Se perdió la conexión a internet durante el proceso. La eliminación de cuenta ha sido cancelada por seguridad.');
+      }
 
-      print('Eliminación completa de cuenta exitosa');
+      // 10. QUINTO: Eliminar cuenta de Firebase Auth (SIEMPRE AL FINAL)
+      print('🔐 EditarPerfil: Paso 5 - Eliminando cuenta de Firebase Auth...');
+      await user.delete();
+      print('✅ EditarPerfil: Cuenta de Firebase Auth eliminada');
+
+      print('🎉 EditarPerfil: Eliminación completa de cuenta exitosa');
 
     } catch (e) {
-      print('Error al eliminar cuenta: $e');
-      rethrow;
+      final errorString = e.toString().toLowerCase();
+      print('❌ EditarPerfil: Error en eliminación de cuenta - $e');
+      
+      // Detectar errores específicos y proporcionar mensajes amigables
+      if (errorString.contains('unavailable') || 
+          errorString.contains('timeout') || 
+          errorString.contains('network') || 
+          errorString.contains('connection')) {
+        throw Exception('El servidor no está disponible temporalmente. Verifica tu conexión a internet e inténtalo de nuevo en unos momentos.');
+      } else if (errorString.contains('permission-denied') || 
+                 errorString.contains('unauthorized')) {
+        throw Exception('No tienes permisos para eliminar esta cuenta. Verifica tu autenticación.');
+      } else if (errorString.contains('unauthenticated') ||
+                 (errorString.contains('user') && errorString.contains('auth'))) {
+        throw Exception('Tu sesión ha expirado. Inicia sesión nuevamente e inténtalo de nuevo.');
+      } else if (errorString.contains('quota-exceeded') ||
+                 errorString.contains('resource-exhausted')) {
+        throw Exception('Se ha superado la cuota de uso. Inténtalo más tarde.');
+      } else if (errorString.contains('deadline-exceeded') ||
+                 errorString.contains('cancelled')) {
+        throw Exception('La operación tardó demasiado tiempo. Verifica tu conexión e inténtalo de nuevo.');
+      } else if (errorString.contains('perdió') && errorString.contains('conexión')) {
+        rethrow; // Usar mensaje específico de pérdida de conexión
+      } else if (errorString.contains('requires-recent-login')) {
+        throw Exception('Por seguridad, necesitas iniciar sesión nuevamente antes de eliminar tu cuenta.');
+      } else {
+        // Para cualquier otro error, usar un mensaje genérico y amigable
+        throw Exception('No se pudo eliminar la cuenta. Verifica tu conexión a internet e inténtalo de nuevo. Si el problema persiste, contacta al soporte técnico.');
+      }
     }
   }
 

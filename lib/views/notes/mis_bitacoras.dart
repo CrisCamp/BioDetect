@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:biodetect/themes.dart';
 import 'package:biodetect/services/bitacora_service.dart';
+import 'package:biodetect/services/profile_notifier.dart';
 import 'package:biodetect/views/notes/crear_editar_bitacora_screen.dart';
 import 'package:biodetect/views/notes/detalle_bitacora_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -21,25 +23,89 @@ class _MisBitacorasScreenState extends State<MisBitacorasScreen> {
   bool _hasInternet = true;
   String _searchText = '';
   String _filtroActivo = 'todas'; // todas, publicas, privadas
+  Timer? _internetCheckTimer;
 
   @override
   void initState() {
     super.initState();
     _loadBitacoras();
     _checkInternetConnection();
+    _startInternetMonitoring();
+  }
+
+  @override
+  void dispose() {
+    _internetCheckTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _checkInternetConnection() async {
     try {
-      final result = await InternetAddress.lookup('google.com');
-      setState(() {
-        _hasInternet = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-      });
+      final result = await InternetAddress.lookup('dns.google');
+      final hasConnection = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+      
+      if (mounted && _hasInternet != hasConnection) {
+        setState(() {
+          _hasInternet = hasConnection;
+        });
+        
+        // Mostrar notificación solo cuando cambie el estado
+        if (hasConnection) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.wifi, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    'Conexión a internet restablecida',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.buttonGreen2,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.wifi_off, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    'Se perdió la conexión a internet',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.warning,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      } else if (mounted && _hasInternet != hasConnection) {
+        setState(() {
+          _hasInternet = hasConnection;
+        });
+      }
     } catch (_) {
-      setState(() {
-        _hasInternet = false;
-      });
+      if (mounted && _hasInternet) {
+        setState(() {
+          _hasInternet = false;
+        });
+      }
     }
+  }
+
+  void _startInternetMonitoring() {
+    // Verificar conexión cada 5 segundos
+    _internetCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (mounted) {
+        _checkInternetConnection();
+      }
+    });
   }
 
   Future<void> _loadBitacoras() async {
@@ -111,6 +177,30 @@ class _MisBitacorasScreenState extends State<MisBitacorasScreen> {
   }
 
   Future<void> _eliminarBitacora(String bitacoraId, String titulo) async {
+    // Verificar conexión a internet antes de mostrar el diálogo de confirmación
+    await _checkInternetConnection();
+    if (!_hasInternet) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.wifi_off, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Se requiere conexión a internet para eliminar bitácoras. Verifica tu conexión e inténtalo de nuevo.',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.warning,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     final confirmacion = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -143,23 +233,128 @@ class _MisBitacorasScreenState extends State<MisBitacorasScreen> {
     );
 
     if (confirmacion == true) {
-      try {
-        await BitacoraService.deleteBitacora(bitacoraId);
+      // Verificación adicional de conexión justo antes de eliminar
+      await _checkInternetConnection();
+      if (!_hasInternet) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Bitácora eliminada correctamente'),
+              content: Row(
+                children: [
+                  Icon(Icons.wifi_off, color: Colors.white),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Se perdió la conexión a internet. La eliminación ha sido cancelada por seguridad.',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.warning,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+        return;
+      }
+
+      try {
+        print('🔄 Iniciando eliminación de bitácora: $titulo');
+        await BitacoraService.deleteBitacora(bitacoraId);
+        print('✅ Bitácora eliminada exitosamente: $titulo');
+        
+        // Notificar al ProfileScreen que se eliminó una bitácora
+        ProfileNotifier().notifyBitacorasEliminadas();
+        print('🔔 Notificado al ProfileScreen: eliminación de bitácora "$titulo"');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    'Bitácora eliminada correctamente',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
               backgroundColor: AppColors.buttonGreen2,
+              duration: Duration(seconds: 3),
             ),
           );
           _loadBitacoras();
         }
       } catch (e) {
+        print('❌ Error al eliminar bitácora: $e');
+        
+        // Extraer mensaje limpio del error
+        String errorMessage = 'No se pudo eliminar la bitácora. Inténtalo de nuevo.';
+        IconData errorIcon = Icons.error_outline;
+        
+        // Extraer el mensaje limpio de la excepción
+        String cleanErrorMessage = e.toString();
+        if (cleanErrorMessage.startsWith('Exception: ')) {
+          cleanErrorMessage = cleanErrorMessage.substring(11);
+        }
+        
+        final errorString = cleanErrorMessage.toLowerCase();
+        
+        if (errorString.contains('servidor no está disponible') ||
+            errorString.contains('unavailable') ||
+            errorString.contains('network') || 
+            errorString.contains('internet') || 
+            errorString.contains('connection') ||
+            errorString.contains('timeout')) {
+          errorMessage = 'Problema de conexión. Verifica tu internet e inténtalo de nuevo.';
+          errorIcon = Icons.wifi_off;
+        } else if (errorString.contains('permisos') ||
+                   errorString.contains('permission') || 
+                   errorString.contains('unauthorized')) {
+          errorMessage = 'No tienes permisos para eliminar esta bitácora.';
+          errorIcon = Icons.lock;
+        } else if (errorString.contains('no existe') ||
+                   errorString.contains('eliminada por otro usuario') ||
+                   errorString.contains('not found')) {
+          errorMessage = 'La bitácora ya no existe o fue eliminada.';
+          errorIcon = Icons.file_copy_outlined;
+        } else if (errorString.contains('sesión ha expirado') ||
+                   errorString.contains('inicia sesión')) {
+          errorMessage = 'Tu sesión ha expirado. Inicia sesión nuevamente.';
+          errorIcon = Icons.account_circle_outlined;
+        } else if (errorString.contains('cuota') ||
+                   errorString.contains('quota')) {
+          errorMessage = 'Se ha superado el límite de uso. Inténtalo más tarde.';
+          errorIcon = Icons.hourglass_empty;
+        } else if (errorString.length > 10 && errorString.length < 80) {
+          // Si el mensaje ya es limpio y no muy largo, usarlo directamente
+          errorMessage = cleanErrorMessage;
+        }
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error al eliminar: $e'),
+              content: Row(
+                children: [
+                  Icon(errorIcon, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      errorMessage,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
               backgroundColor: AppColors.warning,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Reintentar',
+                textColor: Colors.white,
+                onPressed: () => _eliminarBitacora(bitacoraId, titulo),
+              ),
             ),
           );
         }
@@ -168,6 +363,30 @@ class _MisBitacorasScreenState extends State<MisBitacorasScreen> {
   }
 
   Future<void> _editarBitacora(Map<String, dynamic> bitacora) async {
+    // Verificar conexión a internet antes de redirigir a editar
+    await _checkInternetConnection();
+    if (!_hasInternet) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.wifi_off, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Se requiere conexión a internet para editar bitácoras. Verifica tu conexión e inténtalo de nuevo.',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.warning,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -264,9 +483,64 @@ class _MisBitacorasScreenState extends State<MisBitacorasScreen> {
                     IconButton(
                       icon: const Icon(Icons.refresh),
                       color: AppColors.white,
-                      onPressed: _isLoading ? null : () {
-                        _checkInternetConnection();
-                        _loadBitacoras();
+                      onPressed: _isLoading ? null : () async {
+                        // Mostrar feedback de actualización
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Row(
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Text(
+                                  'Actualizando conexión y bitácoras...',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
+                            backgroundColor: AppColors.slateGreen,
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                        
+                        // Verificar conexión primero
+                        await _checkInternetConnection();
+                        
+                        // Luego cargar bitácoras
+                        await _loadBitacoras();
+                        
+                        // Mostrar resultado
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  Icon(
+                                    _hasInternet ? Icons.check_circle : Icons.wifi_off,
+                                    color: Colors.white,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    _hasInternet 
+                                      ? 'Bitácoras actualizadas correctamente'
+                                      : 'Actualizado - Sin conexión a internet',
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: _hasInternet 
+                                ? AppColors.buttonGreen2 
+                                : AppColors.warning,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
                       },
                     ),
                   ],
